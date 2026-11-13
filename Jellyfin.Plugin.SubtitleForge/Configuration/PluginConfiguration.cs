@@ -1,0 +1,142 @@
+using MediaBrowser.Model.Plugins;
+
+namespace Jellyfin.Plugin.SubtitleForge.Configuration;
+
+/// <summary>
+/// Plugin configuration.
+/// </summary>
+public class PluginConfiguration : BasePluginConfiguration
+{
+    /// <summary>
+    /// Gets or sets a value indicating whether the server-enforced style is injected into the web client.
+    /// </summary>
+    public bool StyleEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the CSS font family.
+    /// </summary>
+    public string FontFamily { get; set; } = "\"Noto Sans\", \"Open Sans\", Arial, sans-serif";
+
+    /// <summary>
+    /// Gets or sets the font size relative to the video height in percent (vh).
+    /// </summary>
+    public double FontSizeVh { get; set; } = 4.5;
+
+    /// <summary>
+    /// Gets or sets the CSS font weight (400 = normal, 700 = bold).
+    /// </summary>
+    public int FontWeight { get; set; } = 600;
+
+    /// <summary>
+    /// Gets or sets the text color (#rrggbb).
+    /// </summary>
+    public string TextColor { get; set; } = "#ffffff";
+
+    /// <summary>
+    /// Gets or sets the outline color (#rrggbb).
+    /// </summary>
+    public string OutlineColor { get; set; } = "#000000";
+
+    /// <summary>
+    /// Gets or sets the outline width in px (0 = none).
+    /// </summary>
+    public double OutlineWidthPx { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a soft drop shadow is drawn.
+    /// </summary>
+    public bool DropShadow { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the background color (#rrggbb).
+    /// </summary>
+    public string BackgroundColor { get; set; } = "#000000";
+
+    /// <summary>
+    /// Gets or sets the background opacity 0..1 (0 = no box).
+    /// </summary>
+    public double BackgroundOpacity { get; set; }
+
+    /// <summary>
+    /// Gets or sets the distance of the subtitle block from the bottom edge in percent of the video height.
+    /// </summary>
+    public double BottomOffsetPercent { get; set; } = 6;
+
+    /// <summary>
+    /// Gets or sets the comma separated languages whose image subtitles are converted (ISO 639-1/-2).
+    /// </summary>
+    public string OcrLanguages { get; set; } = "ger,deu,de,eng,en";
+
+    /// <summary>
+    /// Gets or sets a value indicating whether image subtitles without language tag are converted too.
+    /// </summary>
+    public bool OcrIncludeUndefined { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether OCR is skipped when the file already has an embedded text subtitle
+    /// with the same language and forced flag.
+    /// </summary>
+    public bool OcrSkipIfTextExists { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the CPU threads used by OCR (1-2 recommended on NAS CPUs).
+    /// </summary>
+    public int OcrThreads { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets the comma separated languages to download (ISO 639-1, e.g. "de,en").
+    /// </summary>
+    public string DownloadLanguages { get; set; } = "de,en";
+
+    /// <summary>
+    /// Gets or sets a value indicating whether only safe matches (hash or same release group/source) are saved automatically.
+    /// Until audio sync verification exists this should stay on.
+    /// </summary>
+    public bool DownloadOnlySafeMatches { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the number of days before an item without a good subtitle is searched again.
+    /// </summary>
+    public int DownloadRetryDays { get; set; } = 7;
+
+    /// <summary>
+    /// Gets or sets the SubDL API key.
+    /// </summary>
+    public string SubDlApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the OpenSubtitles.com API key.
+    /// </summary>
+    public string OpenSubtitlesApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the OpenSubtitles.com user name (more downloads per day than anonymous).
+    /// </summary>
+    public string OpenSubtitlesUsername { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the OpenSubtitles.com password.
+    /// </summary>
+    public string OpenSubtitlesPassword { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the automatic job only spends OpenSubtitles downloads on hash matches.
+    /// </summary>
+    public bool OpenSubtitlesOnlyHashMatches { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether downloaded subtitles are verified against the audio and their timing corrected.
+    /// </summary>
+    public bool SyncEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets how many candidates per language may be downloaded and checked against the audio.
+    /// </summary>
+    public int SyncMaxCandidates { get; set; } = 4;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the sync task may correct external subtitles that SubtitleForge did not create
+    /// (the original is kept as *.orig).
+    /// </summary>
+    public bool SyncFixForeignSubtitles { get; set; }
+}

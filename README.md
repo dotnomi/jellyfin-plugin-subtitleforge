@@ -1,0 +1,42 @@
+# SubtitleForge – Jellyfin-Plugin für Untertitel
+
+Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen Dienste wie Sonarr, Radarr oder Bazarr und läuft rein auf der CPU, also auch auf NAS-Geräten (z.B. Intel N100).
+
+## Funktionen
+
+| Funktion | Wie |
+|---|---|
+| **Einheitlicher Untertitel-Stil** | Schrift, Größe, Farbe, Rand, Hintergrund und Position werden vom Server vorgegeben und im Web-Client und in Jellyfin Desktop erzwungen (Skript-Injection in `index.html`, ohne Dateien zu ändern). Für Android TV und Handy-Apps schreibt das Plugin bereinigte SRT-Dateien, damit dort die App-Einstellungen einheitlich greifen. |
+| **Bild-Untertitel → Text (OCR)** | Geplante Aufgabe. Eingebettete PGS-Untertitel (Blu-ray) werden per eigenem PGS-Decoder und PaddleOCR (PP-OCRv5 Latin, ONNX) einmalig in `Film.deu.OCR.srt` umgewandelt. |
+| **Fehlende Untertitel herunterladen** | Geplante Aufgabe sowie Eintrag „SubtitleForge“ in Jellyfins Untertitelsuche. Quellen sind SubDL und OpenSubtitles.com (OpenSubtitles automatisch nur bei Hash-Treffer, um das Tageslimit zu schonen). Die Kandidaten werden danach bewertet, wie gut sie zum Release passen (Gruppe, Quelle, Dienst, Auflösung, Fassung, Folge). |
+| **Synchronität prüfen und korrigieren** | Silero VAD erkennt Sprache in der Tonspur (bei Surround-Ton im Center-Kanal). Der Abgleich korrigiert Versatz, Framerate (23,976/24/25) und Schnittunterschiede, sprachunabhängig. Untertitel, die nicht zur Tonspur passen, werden verworfen; bereits synchrone Untertitel bleiben unverändert. |
+
+## Geplante Aufgaben (Dashboard → Geplante Aufgaben → SubtitleForge)
+
+| Aufgabe | Standard-Zeitplan |
+|---|---|
+| Bild-Untertitel in Text umwandeln (OCR) | täglich 03:00 |
+| Fehlende Untertitel herunterladen | täglich 04:00 |
+| Untertitel-Synchronität prüfen und korrigieren | nur manuell |
+
+## Bauen
+
+```bash
+dotnet publish Jellyfin.Plugin.SubtitleForge/Jellyfin.Plugin.SubtitleForge.csproj -c Release -o out
+```
+
+Den Inhalt von `out/` (DLLs und `runtimes/linux-*`) nach `<jellyfin-config>/plugins/SubtitleForge/` kopieren und Jellyfin neu starten. Ohne lokales .NET SDK baut `dev-deploy.sh` das Plugin in einem Podman-Container und spielt es in eine lokale Test-Instanz ein.
+
+## Tests
+
+```bash
+dotnet test Jellyfin.Plugin.SubtitleForge.Tests
+```
+
+- Die Sync-Tests nutzen einen synthetischen Film mit Sprachausgabe (`tools/make_synth_film.py` erzeugt `Fixtures/synth/film.wav`).
+- `SF_REAL_DIR` und `SF_ANIME_DIR` aktivieren die Kalibrierungstests mit echten Tonspuren und Referenz-Untertiteln (siehe `RealMediaSyncTests.cs` und `AnimeSyncTests.cs`).
+- `SF_DUMP_PGS=<datei.sup>` exportiert die PGS-Bilder und das OCR-Ergebnis zur Fehlersuche.
+
+## Lizenz
+
+GPLv3 (siehe `LICENSE`). Fremdkomponenten: siehe `THIRD-PARTY-NOTICES.md`.

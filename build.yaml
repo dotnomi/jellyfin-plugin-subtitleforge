@@ -1,0 +1,22 @@
+---
+name: "SubtitleForge"
+guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
+version: "0.1.0.0"
+targetAbi: "10.11.0.0"
+framework: "net9.0"
+overview: "Einheitliches Untertitel-Styling, OCR für Bild-Untertitel, Auto-Download und Audio-Sync"
+description: >
+  Erzwingt einen einheitlichen Untertitel-Stil, wandelt PGS-Bilduntertitel per OCR in SRT um,
+  lädt fehlende Untertitel (SubDL, OpenSubtitles) und prüft/korrigiert deren Timing gegen die Tonspur.
+category: "Metadata"
+owner: "dotnomi"
+artifacts:
+- "Jellyfin.Plugin.SubtitleForge.dll"
+- "Microsoft.ML.OnnxRuntime.dll"
+- "System.Numerics.Tensors.dll"
+- "runtimes/linux-x64/native/libonnxruntime.so"
+- "runtimes/linux-x64/native/libonnxruntime_providers_shared.so"
+- "runtimes/linux-arm64/native/libonnxruntime.so"
+- "runtimes/linux-arm64/native/libonnxruntime_providers_shared.so"
+changelog: >
+  Erste Version: Styling, OCR (PGS), Download (SubDL/OpenSubtitles), Audio-Sync.

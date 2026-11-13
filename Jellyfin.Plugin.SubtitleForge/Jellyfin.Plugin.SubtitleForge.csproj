@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.SubtitleForge</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.5" >
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="10.11.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- CPU-only ONNX Runtime; the managed package ships natives for linux-x64/arm64, win, osx. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jellyfin.Plugin.SubtitleForge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\configPage.html" />
+    <None Remove="Styling\client.js" />
+    <EmbeddedResource Include="Styling\client.js" />
+    <None Remove="Ocr\Models\*" />
+    <EmbeddedResource Include="Ocr\Models\rec.onnx" />
+    <EmbeddedResource Include="Ocr\Models\dict.txt" />
+    <None Remove="Sync\Models\*" />
+    <EmbeddedResource Include="Sync\Models\silero_vad.onnx" />
+  </ItemGroup>
+
+  <!-- Jellyfin loads every *.dll inside the plugin folder, so only ship the Linux natives (.so). -->
+  <Target Name="StripNonLinuxRuntimes" AfterTargets="Publish">
+    <ItemGroup>
+      <_NonLinuxRuntime Include="$(PublishDir)runtimes/**/*" Exclude="$(PublishDir)runtimes/linux-x64/**/*;$(PublishDir)runtimes/linux-arm64/**/*" />
+    </ItemGroup>
+    <Delete Files="@(_NonLinuxRuntime)" />
+    <RemoveDir Directories="$(PublishDir)runtimes/win-x64;$(PublishDir)runtimes/win-arm64;$(PublishDir)runtimes/osx-arm64;$(PublishDir)runtimes/osx-x64;$(PublishDir)runtimes/android;$(PublishDir)runtimes/ios" />
+  </Target>
+
+</Project>

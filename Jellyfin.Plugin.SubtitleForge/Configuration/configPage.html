@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <title>SubtitleForge</title>
+</head>
+<body>
+    <div id="SubtitleForgeConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="SubtitleForgeConfigForm">
+                    <h2 class="sectionTitle">Untertitel-Stil</h2>
+                    <p>Gilt für Jellyfin Web und Desktop (vom Server erzwungen). Android TV und die Handy-Apps nutzen ihre eigenen Einstellungen – stelle dort einmal die Werte unten ein.</p>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="StyleEnabled" name="StyleEnabled" type="checkbox" is="emby-checkbox" />
+                            <span>Stil im Web-Client erzwingen</span>
+                        </label>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="FontFamily">Schriftart (CSS font-family)</label>
+                        <input id="FontFamily" name="FontFamily" type="text" is="emby-input" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="FontSizeVh">Schriftgröße (% der Bildhöhe)</label>
+                        <input id="FontSizeVh" name="FontSizeVh" type="number" step="0.1" min="1" max="15" is="emby-input" />
+                    </div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="FontWeight">Schriftstärke</label>
+                        <select is="emby-select" id="FontWeight" name="FontWeight" class="emby-select-withcolor emby-select">
+                            <option value="400">Normal</option>
+                            <option value="500">Medium</option>
+                            <option value="600">Halbfett</option>
+                            <option value="700">Fett</option>
+                        </select>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="TextColor">Textfarbe</label>
+                        <input id="TextColor" name="TextColor" type="color" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OutlineColor">Randfarbe</label>
+                        <input id="OutlineColor" name="OutlineColor" type="color" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OutlineWidthPx">Randstärke (px, 0 = kein Rand)</label>
+                        <input id="OutlineWidthPx" name="OutlineWidthPx" type="number" step="0.5" min="0" max="8" is="emby-input" />
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="DropShadow" name="DropShadow" type="checkbox" is="emby-checkbox" />
+                            <span>Weicher Schatten</span>
+                        </label>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="BackgroundColor">Hintergrundfarbe</label>
+                        <input id="BackgroundColor" name="BackgroundColor" type="color" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="BackgroundOpacity">Hintergrund-Deckkraft (0 bis 1, 0 = kein Kasten)</label>
+                        <input id="BackgroundOpacity" name="BackgroundOpacity" type="number" step="0.05" min="0" max="1" is="emby-input" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="BottomOffsetPercent">Abstand vom unteren Rand (% der Bildhöhe)</label>
+                        <input id="BottomOffsetPercent" name="BottomOffsetPercent" type="number" step="0.5" min="0" max="50" is="emby-input" />
+                    </div>
+
+                    <h2 class="sectionTitle">Bild-Untertitel → Text (OCR)</h2>
+                    <p>Die geplante Aufgabe „Bild-Untertitel in Text umwandeln (OCR)“ (Dashboard → Geplante Aufgaben → SubtitleForge) wandelt eingebettete PGS-Untertitel einmalig in SRT um. Die neue Spur heißt „OCR“.</p>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OcrLanguages">Sprachen (kommagetrennt, z.B. ger,deu,eng)</label>
+                        <input id="OcrLanguages" name="OcrLanguages" type="text" is="emby-input" />
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="OcrIncludeUndefined" name="OcrIncludeUndefined" type="checkbox" is="emby-checkbox" />
+                            <span>Auch Spuren ohne Sprachangabe umwandeln</span>
+                        </label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="OcrSkipIfTextExists" name="OcrSkipIfTextExists" type="checkbox" is="emby-checkbox" />
+                            <span>Überspringen, wenn bereits eine eingebettete Textspur gleicher Sprache existiert</span>
+                        </label>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OcrThreads">CPU-Threads für OCR (1–2 für NAS)</label>
+                        <input id="OcrThreads" name="OcrThreads" type="number" step="1" min="1" max="16" is="emby-input" />
+                    </div>
+
+                    <h2 class="sectionTitle">Untertitel herunterladen</h2>
+                    <p>Die geplante Aufgabe „Fehlende Untertitel herunterladen“ sucht für Filme und Folgen ohne Untertitel in den gewünschten Sprachen. Zusätzlich erscheint „SubtitleForge“ in der manuellen Untertitelsuche, mit Bewertung, wie gut ein Untertitel zum Release passt.</p>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DownloadLanguages">Sprachen (kommagetrennt, z.B. de,en)</label>
+                        <input id="DownloadLanguages" name="DownloadLanguages" type="text" is="emby-input" />
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="DownloadOnlySafeMatches" name="DownloadOnlySafeMatches" type="checkbox" is="emby-checkbox" />
+                            <span>Nur sichere Treffer automatisch speichern</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Sicher = gleiche Datei (Hash) oder gleiche Release-Gruppe und Quelle. Verhindert asynchrone Untertitel.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DownloadRetryDays">Erneut suchen nach (Tagen)</label>
+                        <input id="DownloadRetryDays" name="DownloadRetryDays" type="number" step="1" min="1" max="365" is="emby-input" />
+                    </div>
+
+                    <h3>SubDL</h3>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="SubDlApiKey">API-Key (kostenlos auf subdl.com → Konto → API)</label>
+                        <input id="SubDlApiKey" name="SubDlApiKey" type="password" autocomplete="off" is="emby-input" />
+                    </div>
+
+                    <h3>OpenSubtitles.com</h3>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesApiKey">API-Key (opensubtitles.com → Profil → API consumers)</label>
+                        <input id="OpenSubtitlesApiKey" name="OpenSubtitlesApiKey" type="password" autocomplete="off" is="emby-input" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesUsername">Benutzername</label>
+                        <input id="OpenSubtitlesUsername" name="OpenSubtitlesUsername" type="text" autocomplete="off" is="emby-input" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesPassword">Passwort</label>
+                        <input id="OpenSubtitlesPassword" name="OpenSubtitlesPassword" type="password" autocomplete="off" is="emby-input" />
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="OpenSubtitlesOnlyHashMatches" name="OpenSubtitlesOnlyHashMatches" type="checkbox" is="emby-checkbox" />
+                            <span>Automatisch nur Hash-Treffer von OpenSubtitles laden</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Spart das knappe Tageslimit für Untertitel, die garantiert zur Datei passen.</div>
+                    </div>
+
+                    <h2 class="sectionTitle">Synchronität (Abgleich mit der Tonspur)</h2>
+                    <p>Erkennt, wann in der Tonspur gesprochen wird, und gleicht Untertitel daran an: Versatz, falsche Framerate (23,976/24/25) und Schnittunterschiede (z.B. anderes Intro). Funktioniert sprachunabhängig, also auch für deutsche Untertitel auf japanischem Ton. Die erste Analyse eines Films dauert je nach CPU 20 Sekunden bis wenige Minuten und wird danach zwischengespeichert.</p>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="SyncEnabled" name="SyncEnabled" type="checkbox" is="emby-checkbox" />
+                            <span>Heruntergeladene Untertitel gegen die Tonspur prüfen und korrigieren</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Damit dürfen auch Untertitel anderer Releases geladen werden – aber nur, wenn sie nachweislich zur Tonspur passen.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="SyncMaxCandidates">Maximal geprüfte Kandidaten pro Sprache</label>
+                        <input id="SyncMaxCandidates" name="SyncMaxCandidates" type="number" step="1" min="1" max="10" is="emby-input" />
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="SyncFixForeignSubtitles" name="SyncFixForeignSubtitles" type="checkbox" is="emby-checkbox" />
+                            <span>Auch fremde externe SRT-Dateien korrigieren</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Betrifft die Aufgabe „Untertitel-Synchronität prüfen und korrigieren“. Das Original bleibt als *.srt.orig erhalten.</div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Speichern</span>
+                        </button>
+                    </div>
+                    <p>Nach dem Speichern den Web-Client neu laden (F5).</p>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var SubtitleForgeConfig = {
+                pluginUniqueId: 'f1e66da5-7fed-45f1-a6b8-79c253708fc8',
+                fields: ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrLanguages', 'OcrThreads', 'DownloadLanguages', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates'],
+                checks: ['StyleEnabled', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled', 'SyncFixForeignSubtitles'],
+                numbers: ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates']
+            };
+
+            document.querySelector('#SubtitleForgeConfigPage').addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(SubtitleForgeConfig.pluginUniqueId).then(function (config) {
+                    SubtitleForgeConfig.fields.forEach(function (f) {
+                        document.querySelector('#' + f).value = config[f];
+                    });
+                    SubtitleForgeConfig.checks.forEach(function (f) {
+                        document.querySelector('#' + f).checked = !!config[f];
+                    });
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            document.querySelector('#SubtitleForgeConfigForm').addEventListener('submit', function (e) {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(SubtitleForgeConfig.pluginUniqueId).then(function (config) {
+                    SubtitleForgeConfig.fields.forEach(function (f) {
+                        var v = document.querySelector('#' + f).value;
+                        config[f] = SubtitleForgeConfig.numbers.indexOf(f) >= 0 ? Number(v) : v;
+                    });
+                    SubtitleForgeConfig.checks.forEach(function (f) {
+                        config[f] = document.querySelector('#' + f).checked;
+                    });
+                    ApiClient.updatePluginConfiguration(SubtitleForgeConfig.pluginUniqueId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+                e.preventDefault();
+                return false;
+            });
+        </script>
+    </div>
+</body>
+</html>
