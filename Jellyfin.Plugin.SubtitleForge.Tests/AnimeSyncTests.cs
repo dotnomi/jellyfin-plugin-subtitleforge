@@ -175,6 +175,17 @@ public class AnimeSyncTests
         {
             var e = truth.Zip(r.Cues, (a, b) => Math.Abs(a.StartMs - b.StartMs)).OrderBy(x => x).ToList();
             err = $" | err median {e[e.Count / 2]} ms, p90 {e[(int)(e.Count * 0.9)]} ms";
+
+            // Core guarantee: a result marked confident must be correct.
+            if (r.IsConfident)
+            {
+                Assert.True(e[(int)(e.Count * 0.9)] <= 300, $"{name}: confident but p90 error {e[(int)(e.Count * 0.9)]} ms");
+            }
+        }
+
+        if (truth is null)
+        {
+            Assert.False(r.IsConfident, $"{name}: wrong subtitle accepted");
         }
 
         _out.WriteLine($"{name,-40} confident={r.IsConfident,-5} {r}{err}");

@@ -68,6 +68,7 @@ public static class SubtitleAligner
     private const int RefineRangeFrames = 30 * Fps;  // ±30 s around the global offset
     private const int ChunkCues = 30;                 // ≈ 4–5 minutes of dialogue per block
     private const int MinChunkCues = 6;
+    private const double MinSegmentProminence = 3.0;
     private const long TargetLeadMs = -180;           // measured on Blu-ray/WEB references: −120…−311 ms
     private const long PlausibleLeadMinMs = -500;
     private const long PlausibleLeadMaxMs = 50;
@@ -79,6 +80,9 @@ public static class SubtitleAligner
 
     [ThreadStatic]
     private static double _outside;
+
+    /// <summary>Gets or sets an optional diagnostics sink (tests only).</summary>
+    internal static Action<string>? Trace { get; set; }
 
     private static readonly double[] Ratios =
     {
@@ -439,13 +443,14 @@ public static class SubtitleAligner
                 }
 
                 var improvement = (best - SegmentGain(cues, start, end, 0, prefix)) / Math.Max(1, frames);
+                Trace?.Invoke(FormattableString.Invariant($"chunk {c} [{start},{end}) bestD {bestD} z {z:F2} improvement {improvement:F3}"));
                 if (improvement < ChunkMinImprovement)
                 {
                     offsets[c] = 0; // the global offset is as good: keep it
                 }
-                else if (z >= ChunkMinZ)
+                else if (z >= ChunkMinZ && Math.Abs(bestD) < RefineRangeFrames - Fps)
                 {
-                    offsets[c] = bestD;
+                    offsets[c] = bestD; // optima at the edge of the search window are artefacts
                 }
             }
         }
@@ -459,9 +464,11 @@ public static class SubtitleAligner
             filled[c] = last ?? 0;
         }
 
-        for (var c = chunks.Count - 1; c >= 0 && offsets.Take(c + 1).All(o => o is null); c--)
+        // Leading unsure blocks take the first confident block's offset (not the global one).
+        var firstKnown = offsets.FirstOrDefault(o => o is not null);
+        for (var c = 0; c < chunks.Count && offsets[c] is null; c++)
         {
-            filled[c] = offsets.FirstOrDefault(o => o is not null) ?? 0;
+            filled[c] = firstKnown ?? 0;
         }
 
         // Median filter (window 3, shifted inwards at the edges) removes single-block outliers, also the first/last block.
@@ -684,6 +691,7 @@ public static class SubtitleAligner
     {
         double weighted = 0;
         var totalCues = 0;
+        var minSegmentZ = double.MaxValue;
         foreach (var (start, end) in SegmentsOf(deltas))
         {
             var chosen = deltas[start];
@@ -699,11 +707,19 @@ public static class SubtitleAligner
 
             var mean = sum / n;
             var std = Math.Sqrt(Math.Max(1e-9, (sumSq / n) - (mean * mean)));
-            weighted += (best - mean) / std * (end - start);
+            var z = (best - mean) / std;
+            if (end - start >= MinSegmentCues)
+            {
+                minSegmentZ = Math.Min(minSegmentZ, z);
+            }
+
+            weighted += z * (end - start);
             totalCues += end - start;
         }
 
-        return totalCues == 0 ? 0 : weighted / totalCues;
+        // Every segment must stand on its own; a wrong segment must not hide in the average.
+        var avg = totalCues == 0 ? 0 : weighted / totalCues;
+        return minSegmentZ < MinSegmentProminence ? Math.Min(avg, minSegmentZ) : avg;
     }
 
     private static void Fft(Complex[] a, bool invert)
