@@ -1,7 +1,7 @@
 ---
 name: "SubtitleForge"
 guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
-version: "0.1.0.0"
+version: "0.2.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Einheitliches Untertitel-Styling, OCR für Bild-Untertitel, Auto-Download und Audio-Sync"
@@ -14,9 +14,21 @@ artifacts:
 - "Jellyfin.Plugin.SubtitleForge.dll"
 - "Microsoft.ML.OnnxRuntime.dll"
 - "System.Numerics.Tensors.dll"
+- "Whisper.net.dll"
 - "runtimes/linux-x64/native/libonnxruntime.so"
 - "runtimes/linux-x64/native/libonnxruntime_providers_shared.so"
+- "runtimes/linux-x64/libwhisper.so"
+- "runtimes/linux-x64/libggml-whisper.so"
+- "runtimes/linux-x64/libggml-base-whisper.so"
+- "runtimes/linux-x64/libggml-cpu-whisper.so"
+- "runtimes/linux-x64/libgomp.so.1"
 - "runtimes/linux-arm64/native/libonnxruntime.so"
 - "runtimes/linux-arm64/native/libonnxruntime_providers_shared.so"
+- "runtimes/linux-arm64/libwhisper.so"
+- "runtimes/linux-arm64/libggml-whisper.so"
+- "runtimes/linux-arm64/libggml-base-whisper.so"
+- "runtimes/linux-arm64/libggml-cpu-whisper.so"
+- "runtimes/linux-arm64/libgomp.so.1"
 changelog: >
-  Erste Version: Styling, OCR (PGS), Download (SubDL/OpenSubtitles), Audio-Sync.
+  0.2: Sprachen pro Serie/Bibliothek (Tag subs:..), Forced-Erkennung, Whisper (CPU),
+  automatische Bearbeitung neuer Einträge, Übersicht mit manuellen Aktionen.
