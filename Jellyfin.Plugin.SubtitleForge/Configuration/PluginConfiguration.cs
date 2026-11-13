@@ -63,11 +63,6 @@ public class PluginConfiguration : BasePluginConfiguration
     public double BottomOffsetPercent { get; set; } = 6;
 
     /// <summary>
-    /// Gets or sets the comma separated languages whose image subtitles are converted (ISO 639-1/-2).
-    /// </summary>
-    public string OcrLanguages { get; set; } = "ger,deu,de,eng,en";
-
-    /// <summary>
     /// Gets or sets a value indicating whether image subtitles without language tag are converted too.
     /// </summary>
     public bool OcrIncludeUndefined { get; set; }
@@ -139,4 +134,40 @@ public class PluginConfiguration : BasePluginConfiguration
     /// (the original is kept as *.orig).
     /// </summary>
     public bool SyncFixForeignSubtitles { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether speech-to-text (Whisper) is available.
+    /// </summary>
+    public bool WhisperEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether Whisper runs automatically when no fitting subtitle was found.
+    /// </summary>
+    public bool WhisperAutoFallback { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the Whisper model: base, small, medium, large-v3-turbo.
+    /// </summary>
+    public string WhisperModel { get; set; } = "small";
+
+    /// <summary>
+    /// Gets or sets the CPU threads for Whisper (0 = automatic: all cores but one, max. 8).
+    /// </summary>
+    public int WhisperThreads { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether English subtitles may be produced by translating another audio language
+    /// (experimental: quality with small models is low).
+    /// </summary>
+    public bool WhisperTranslateToEnglish { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether newly added movies/episodes are processed automatically.
+    /// </summary>
+    public bool ProcessNewItems { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the delay in minutes after a new item was added before it is processed (lets the library scan finish).
+    /// </summary>
+    public int NewItemDelayMinutes { get; set; } = 10;
 }

@@ -1,0 +1,104 @@
+using Jellyfin.Plugin.SubtitleForge.Common;
+using Jellyfin.Plugin.SubtitleForge.Sync;
+using Jellyfin.Plugin.SubtitleForge.Whisper;
+using Xunit;
+
+namespace Jellyfin.Plugin.SubtitleForge.Tests;
+
+public class FeatureTests
+{
+    [Theory]
+    [InlineData("subs:de,ja", "de,ja")]
+    [InlineData("SUBS: ger, eng", "de,en")]
+    [InlineData("subs:none", "")]
+    [InlineData("subs:keine", "")]
+    public void LanguageTag_Parses(string tag, string expected)
+    {
+        Assert.Equal(expected, string.Join(',', LanguageResolver.ParseTag(tag)!));
+    }
+
+    [Fact]
+    public void LanguageTag_IgnoresOtherTags() => Assert.Null(LanguageResolver.ParseTag("Anime"));
+
+    [Theory]
+    [InlineData("Movie.2020.German.Forced.1080p.BluRay-GRP", true)]
+    [InlineData("Movie.2020.FOREIGN.PARTS.ONLY.WEB", true)]
+    [InlineData("Movie.2020.German.1080p.BluRay-GRP", false)]
+    [InlineData("Forcedale.Street.S01E01", false)]
+    public void Forced_ReleaseName(string name, bool forced) => Assert.Equal(forced, ForcedDetector.NameSaysForced(new[] { name }));
+
+    [Fact]
+    public void Forced_CoverageAgainstSpeech()
+    {
+        // 10 minutes, speech every other 5 s.
+        var frames = new byte[60_000];
+        for (var t = 0; t < frames.Length; t++)
+        {
+            frames[t] = (byte)((t / 500) % 2 == 0 ? 255 : 0);
+        }
+
+        var speech = new SpeechSignal(frames);
+        var full = Enumerable.Range(0, 60).Select(i => new SubtitleCue(i * 10_000L, (i * 10_000L) + 5000, "x")).ToList();
+        var forced = full.Take(4).ToList();
+        Assert.False(ForcedDetector.IsLikelyForced(full, speech, 600_000));
+        Assert.True(ForcedDetector.IsLikelyForced(forced, speech, 600_000));
+    }
+
+    [Fact]
+    public void Whisper_RemovesHallucinationsAndLoops()
+    {
+        var segments = new List<WhisperSegment>
+        {
+            new(1000, 3000, "Hallo, wie geht's?"),
+            new(4000, 6000, "Untertitel im Auftrag des ZDF, 2021"),
+            new(7000, 9000, "Gut."),
+            new(9000, 11000, "Gut."),
+            new(11000, 13000, "Gut."),
+            new(14000, 20000, "I hate the word that is a word, I hate the word that is a word, I hate the word that is a word"),
+            new(21000, 23000, "♪ ♪"),
+        };
+        var cues = WhisperPostProcessor.ToCues(segments, null);
+        var texts = cues.Select(c => c.Text.Replace("\n", " ")).ToList();
+        Assert.Contains("Hallo, wie geht's?", texts);
+        Assert.DoesNotContain(texts, t => t.Contains("ZDF", StringComparison.Ordinal));
+        Assert.Equal(2, texts.Count(t => t == "Gut."));
+        Assert.DoesNotContain(texts, t => t.Contains("♪", StringComparison.Ordinal));
+        Assert.True(texts.Count(t => t.Contains("I hate the word", StringComparison.Ordinal)) == 1);
+    }
+
+    [Fact]
+    public void Whisper_SplitsLongTextIntoBalancedCues()
+    {
+        var text = "Solange sie nur an der Oberfläche kratzen, lässt sich ihr Wesen und das, was sie ausmacht, in den Werken nicht wiedererkennen.";
+        var cues = WhisperPostProcessor.ToCues(new[] { new WhisperSegment(0, 8000, text) }, null);
+        Assert.True(cues.Count >= 2);
+        Assert.All(cues, c =>
+        {
+            var lines = c.Text.Split('\n');
+            Assert.True(lines.Length <= 2);
+            Assert.All(lines, l => Assert.True(l.Length <= WhisperPostProcessor.MaxLineChars, l));
+        });
+        Assert.True(cues.Min(c => c.Text.Length) >= 15, "no tiny leftover cue");
+        Assert.Equal(text, string.Join(' ', cues.Select(c => c.Text.Replace('\n', ' '))));
+    }
+
+    [Fact]
+    public void Whisper_SpeechWindowsSkipSilenceAndStayShort()
+    {
+        var frames = new byte[30_000]; // 5 min
+        for (var t = 1000; t < 2000; t++)
+        {
+            frames[t] = 255; // 10–20 s
+        }
+
+        for (var t = 10_000; t < 16_000; t++)
+        {
+            frames[t] = 255; // 100–160 s (60 s continuous)
+        }
+
+        var windows = WhisperEngine.SpeechWindows(new SpeechSignal(frames));
+        Assert.All(windows, w => Assert.True(w.End - w.Start <= WhisperEngine.MaxChunkMs));
+        Assert.DoesNotContain(windows, w => w.Start > 30_000 && w.End < 90_000); // silence skipped
+        Assert.True(windows.Sum(w => w.End - w.Start) < 80_000);
+    }
+}

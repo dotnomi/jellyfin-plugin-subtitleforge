@@ -93,6 +93,52 @@ public class SubtitleFileWriter
     }
 
     /// <summary>
+    /// Deletes subtitles that SubtitleForge downloaded itself (file name tag = source name) for a language.
+    /// Files from other origins are never touched.
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <param name="language">Language code used in file names.</param>
+    /// <param name="sourceTags">Source tags (e.g. SubDL, OpenSubtitles).</param>
+    /// <returns>Number of deleted files.</returns>
+    public int DeleteOwnDownloads(Video video, string language, IEnumerable<string> sourceTags)
+    {
+        var deleted = 0;
+        foreach (var tag in sourceTags)
+        {
+            foreach (var path in CandidatePaths(video, BuildStem(video, language, false, tag)))
+            {
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                _libraryMonitor.ReportFileSystemChangeBeginning(path);
+                try
+                {
+                    File.Delete(path);
+                    deleted++;
+                    _logger.LogInformation("SubtitleForge: removed {Path}", path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("SubtitleForge: cannot delete {Path}: {Message}", path, ex.Message);
+                }
+                finally
+                {
+                    _libraryMonitor.ReportFileSystemChangeComplete(path, false);
+                }
+            }
+        }
+
+        if (deleted > 0)
+        {
+            _providerManager.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
+        }
+
+        return deleted;
+    }
+
+    /// <summary>
     /// Writes the SRT and queues a refresh of the item.
     /// </summary>
     /// <param name="video">Video.</param>

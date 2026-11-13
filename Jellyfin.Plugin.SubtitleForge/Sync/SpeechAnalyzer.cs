@@ -106,19 +106,26 @@ public sealed class SpeechAnalyzer : IDisposable
     }
 
     /// <summary>
-    /// Gets (or computes and caches) the speech signal of a video.
+    /// Gets (or computes and caches) the speech signal of a video's main audio track.
     /// </summary>
     /// <param name="video">Video.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Signal, or null if the video has no audio.</returns>
-    public async Task<SpeechSignal?> GetSignalAsync(Video video, CancellationToken cancellationToken)
+    public Task<SpeechSignal?> GetSignalAsync(Video video, CancellationToken cancellationToken)
     {
         var audio = PickAudioStream(video);
-        if (audio is null)
-        {
-            return null;
-        }
+        return audio is null ? Task.FromResult<SpeechSignal?>(null) : GetSignalAsync(video, audio, cancellationToken)!;
+    }
 
+    /// <summary>
+    /// Gets (or computes and caches) the speech signal of a specific audio track.
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <param name="audio">Audio stream.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Signal.</returns>
+    public async Task<SpeechSignal?> GetSignalAsync(Video video, MediaStream audio, CancellationToken cancellationToken)
+    {
         var cache = CachePath(video, audio.Index);
         var cached = SpeechSignal.Load(cache);
         if (cached is not null)
@@ -137,26 +144,7 @@ public sealed class SpeechAnalyzer : IDisposable
             }
 
             var sw = Stopwatch.StartNew();
-            var psi = new ProcessStartInfo(_mediaEncoder.EncoderPath)
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            // Dialogue lives in the centre channel of surround mixes; music and effects in the others would mask it.
-            var mix = audio.Channels >= 3
-                ? new[] { "-af", "pan=mono|c0=FC" }
-                : new[] { "-ac", "1" };
-            var args = new List<string> { "-nostdin", "-v", "error", "-i", video.Path, "-map", StreamMap.Specifier(video.GetMediaStreams(), audio), "-vn", "-sn", "-dn" };
-            args.AddRange(mix);
-            args.AddRange(new[] { "-ar", "16000", "-f", "s16le", "pipe:1" });
-            foreach (var a in args)
-            {
-                psi.ArgumentList.Add(a);
-            }
-
-            using var process = Process.Start(psi) ?? throw new InvalidOperationException("ffmpeg did not start");
+            using var process = StartFfmpeg(video, audio, "pipe:1");
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             SpeechSignal signal;
             try
@@ -166,14 +154,7 @@ public sealed class SpeechAnalyzer : IDisposable
             }
             catch (OperationCanceledException)
             {
-                try
-                {
-                    process.Kill(true);
-                }
-                catch (InvalidOperationException)
-                {
-                }
-
+                Kill(process);
                 throw;
             }
 
@@ -195,6 +176,83 @@ public sealed class SpeechAnalyzer : IDisposable
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Writes an audio track as 16 kHz mono PCM (s16le) to a file and returns its speech signal (cached as well).
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <param name="audio">Audio stream.</param>
+    /// <param name="pcmPath">Output file.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Speech signal.</returns>
+    public async Task<SpeechSignal> ExtractPcmAsync(Video video, MediaStream audio, string pcmPath, CancellationToken cancellationToken)
+    {
+        using (var process = StartFfmpeg(video, audio, pcmPath))
+        {
+            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                Kill(process);
+                throw;
+            }
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException("Audio extraction failed: " + (await stderr.ConfigureAwait(false)).Trim());
+            }
+        }
+
+        var cache = CachePath(video, audio.Index);
+        var signal = SpeechSignal.Load(cache);
+        if (signal is null)
+        {
+            await using var fs = File.OpenRead(pcmPath);
+            signal = await Task.Run(() => AnalyzePcm(fs, cancellationToken), cancellationToken).ConfigureAwait(false);
+            signal.Save(cache);
+        }
+
+        return signal;
+    }
+
+    private static void Kill(Process process)
+    {
+        try
+        {
+            process.Kill(true);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private Process StartFfmpeg(Video video, MediaStream audio, string output)
+    {
+        var psi = new ProcessStartInfo(_mediaEncoder.EncoderPath)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        // Dialogue lives in the centre channel of surround mixes; music and effects in the others would mask it.
+        var mix = audio.Channels >= 3
+            ? new[] { "-af", "pan=mono|c0=FC" }
+            : new[] { "-ac", "1" };
+        var args = new List<string> { "-nostdin", "-v", "error", "-y", "-i", video.Path, "-map", StreamMap.Specifier(video.GetMediaStreams(), audio), "-vn", "-sn", "-dn" };
+        args.AddRange(mix);
+        args.AddRange(new[] { "-ar", "16000", "-f", "s16le", output });
+        foreach (var a in args)
+        {
+            psi.ArgumentList.Add(a);
+        }
+
+        return Process.Start(psi) ?? throw new InvalidOperationException("ffmpeg did not start");
     }
 
     /// <inheritdoc />

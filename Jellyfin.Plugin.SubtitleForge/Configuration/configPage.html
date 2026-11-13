@@ -6,205 +6,263 @@
 </head>
 <body>
     <div id="SubtitleForgeConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <style>
+            #SubtitleForgeConfigPage .sf-tabs { display: flex; gap: .5em; margin: 1em 0 1.5em; }
+            #SubtitleForgeConfigPage .sf-tab.active { background: #00a4dc; color: #fff; }
+            #SubtitleForgeConfigPage table.sf { width: 100%; border-collapse: collapse; font-size: .9em; }
+            #SubtitleForgeConfigPage table.sf th, #SubtitleForgeConfigPage table.sf td { text-align: left; padding: .45em .5em; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
+            #SubtitleForgeConfigPage .sf-pill { display: inline-block; padding: .1em .5em; border-radius: .8em; margin: 0 .25em .25em 0; font-size: .85em; }
+            #SubtitleForgeConfigPage .sf-ok { background: rgba(60,160,80,.25); }
+            #SubtitleForgeConfigPage .sf-miss { background: rgba(200,80,60,.25); }
+            #SubtitleForgeConfigPage .sf-wait { background: rgba(128,128,128,.25); }
+            #SubtitleForgeConfigPage .sf-detail { opacity: .75; font-size: .85em; }
+            #SubtitleForgeConfigPage .sf-actions select, #SubtitleForgeConfigPage .sf-actions button { margin: .15em .2em .15em 0; }
+            #SubtitleForgeConfigPage .sf-queue { padding: .75em 1em; border-radius: .4em; background: rgba(128,128,128,.12); margin-bottom: 1em; font-size: .9em; }
+            #SubtitleForgeConfigPage .sf-toolbar { display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em; }
+            #SubtitleForgeConfigPage .sf-toolbar input[type=search] { min-width: 16em; padding: .4em; }
+        </style>
         <div data-role="content">
             <div class="content-primary">
-                <form id="SubtitleForgeConfigForm">
+                <div class="sf-tabs">
+                    <button is="emby-button" type="button" class="raised sf-tab active" data-tab="overview"><span>Übersicht</span></button>
+                    <button is="emby-button" type="button" class="raised sf-tab" data-tab="settings"><span>Einstellungen</span></button>
+                </div>
+
+                <!-- ===================== Übersicht ===================== -->
+                <div id="sfOverview">
+                    <div class="sf-queue" id="sfQueue">Warteschlange wird geladen …</div>
+                    <div class="sf-toolbar">
+                        <input type="search" id="sfFilter" placeholder="Filtern (Titel) …" />
+                        <label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" id="sfOnlyMissing" /><span>Nur mit fehlenden Sprachen</span></label>
+                        <label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" id="sfReplace" checked /><span>Whisper ersetzt heruntergeladene Untertitel</span></label>
+                        <button is="emby-button" type="button" class="raised" id="sfReload"><span>Aktualisieren</span></button>
+                    </div>
+                    <p class="sf-detail">Sprachen pro Serie/Film: im Metadaten-Editor den Tag <code>subs:de,ja</code> setzen (an der Serie gilt er für alle Folgen; <code>subs:none</code> schaltet ab). Sonst gelten die Sprachen der Bibliothek bzw. der Plugin-Standard.</p>
+                    <table class="sf">
+                        <thead><tr><th>Titel</th><th>Sprachen</th><th>Aktionen</th></tr></thead>
+                        <tbody id="sfRows"><tr><td colspan="3">Wird geladen …</td></tr></tbody>
+                    </table>
+                </div>
+
+                <!-- ===================== Einstellungen ===================== -->
+                <form id="SubtitleForgeConfigForm" style="display:none">
                     <h2 class="sectionTitle">Untertitel-Stil</h2>
                     <p>Gilt für Jellyfin Web und Desktop (vom Server erzwungen). Android TV und die Handy-Apps nutzen ihre eigenen Einstellungen – stelle dort einmal die Werte unten ein.</p>
-
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="StyleEnabled" name="StyleEnabled" type="checkbox" is="emby-checkbox" />
-                            <span>Stil im Web-Client erzwingen</span>
-                        </label>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="FontFamily">Schriftart (CSS font-family)</label>
-                        <input id="FontFamily" name="FontFamily" type="text" is="emby-input" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="FontSizeVh">Schriftgröße (% der Bildhöhe)</label>
-                        <input id="FontSizeVh" name="FontSizeVh" type="number" step="0.1" min="1" max="15" is="emby-input" />
-                    </div>
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="FontWeight">Schriftstärke</label>
-                        <select is="emby-select" id="FontWeight" name="FontWeight" class="emby-select-withcolor emby-select">
-                            <option value="400">Normal</option>
-                            <option value="500">Medium</option>
-                            <option value="600">Halbfett</option>
-                            <option value="700">Fett</option>
-                        </select>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="TextColor">Textfarbe</label>
-                        <input id="TextColor" name="TextColor" type="color" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OutlineColor">Randfarbe</label>
-                        <input id="OutlineColor" name="OutlineColor" type="color" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OutlineWidthPx">Randstärke (px, 0 = kein Rand)</label>
-                        <input id="OutlineWidthPx" name="OutlineWidthPx" type="number" step="0.5" min="0" max="8" is="emby-input" />
-                    </div>
                     <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="DropShadow" name="DropShadow" type="checkbox" is="emby-checkbox" />
-                            <span>Weicher Schatten</span>
-                        </label>
+                        <label class="emby-checkbox-label"><input id="StyleEnabled" type="checkbox" is="emby-checkbox" /><span>Stil im Web-Client erzwingen</span></label>
                     </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="BackgroundColor">Hintergrundfarbe</label>
-                        <input id="BackgroundColor" name="BackgroundColor" type="color" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="BackgroundOpacity">Hintergrund-Deckkraft (0 bis 1, 0 = kein Kasten)</label>
-                        <input id="BackgroundOpacity" name="BackgroundOpacity" type="number" step="0.05" min="0" max="1" is="emby-input" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="BottomOffsetPercent">Abstand vom unteren Rand (% der Bildhöhe)</label>
-                        <input id="BottomOffsetPercent" name="BottomOffsetPercent" type="number" step="0.5" min="0" max="50" is="emby-input" />
-                    </div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="FontFamily">Schriftart (CSS font-family)</label><input id="FontFamily" type="text" is="emby-input" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="FontSizeVh">Schriftgröße (% der Bildhöhe)</label><input id="FontSizeVh" type="number" step="0.1" min="1" max="15" is="emby-input" /></div>
+                    <div class="selectContainer"><label class="selectLabel" for="FontWeight">Schriftstärke</label>
+                        <select is="emby-select" id="FontWeight" class="emby-select-withcolor emby-select">
+                            <option value="400">Normal</option><option value="500">Medium</option><option value="600">Halbfett</option><option value="700">Fett</option>
+                        </select></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="TextColor">Textfarbe</label><input id="TextColor" type="color" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OutlineColor">Randfarbe</label><input id="OutlineColor" type="color" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OutlineWidthPx">Randstärke (px, 0 = kein Rand)</label><input id="OutlineWidthPx" type="number" step="0.5" min="0" max="8" is="emby-input" /></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="DropShadow" type="checkbox" is="emby-checkbox" /><span>Weicher Schatten</span></label></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="BackgroundColor">Hintergrundfarbe</label><input id="BackgroundColor" type="color" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="BackgroundOpacity">Hintergrund-Deckkraft (0 bis 1, 0 = kein Kasten)</label><input id="BackgroundOpacity" type="number" step="0.05" min="0" max="1" is="emby-input" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="BottomOffsetPercent">Abstand vom unteren Rand (% der Bildhöhe)</label><input id="BottomOffsetPercent" type="number" step="0.5" min="0" max="50" is="emby-input" /></div>
+
+                    <h2 class="sectionTitle">Sprachen</h2>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DownloadLanguages">Standard-Sprachen (z.B. de,en)</label><input id="DownloadLanguages" type="text" is="emby-input" />
+                        <div class="fieldDescription">Gilt, wenn weder ein Tag <code>subs:…</code> an Film/Serie noch die Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ etwas festlegt.</div></div>
 
                     <h2 class="sectionTitle">Bild-Untertitel → Text (OCR)</h2>
-                    <p>Die geplante Aufgabe „Bild-Untertitel in Text umwandeln (OCR)“ (Dashboard → Geplante Aufgaben → SubtitleForge) wandelt eingebettete PGS-Untertitel einmalig in SRT um. Die neue Spur heißt „OCR“.</p>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OcrLanguages">Sprachen (kommagetrennt, z.B. ger,deu,eng)</label>
-                        <input id="OcrLanguages" name="OcrLanguages" type="text" is="emby-input" />
-                    </div>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="OcrIncludeUndefined" name="OcrIncludeUndefined" type="checkbox" is="emby-checkbox" />
-                            <span>Auch Spuren ohne Sprachangabe umwandeln</span>
-                        </label>
-                    </div>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="OcrSkipIfTextExists" name="OcrSkipIfTextExists" type="checkbox" is="emby-checkbox" />
-                            <span>Überspringen, wenn bereits eine eingebettete Textspur gleicher Sprache existiert</span>
-                        </label>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OcrThreads">CPU-Threads für OCR (1–2 für NAS)</label>
-                        <input id="OcrThreads" name="OcrThreads" type="number" step="1" min="1" max="16" is="emby-input" />
-                    </div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="OcrIncludeUndefined" type="checkbox" is="emby-checkbox" /><span>Auch Spuren ohne Sprachangabe umwandeln</span></label></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="OcrSkipIfTextExists" type="checkbox" is="emby-checkbox" /><span>Überspringen, wenn bereits eine eingebettete Textspur gleicher Sprache existiert</span></label></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OcrThreads">CPU-Threads für OCR (1–2 für NAS)</label><input id="OcrThreads" type="number" step="1" min="1" max="16" is="emby-input" /></div>
 
                     <h2 class="sectionTitle">Untertitel herunterladen</h2>
-                    <p>Die geplante Aufgabe „Fehlende Untertitel herunterladen“ sucht für Filme und Folgen ohne Untertitel in den gewünschten Sprachen. Zusätzlich erscheint „SubtitleForge“ in der manuellen Untertitelsuche, mit Bewertung, wie gut ein Untertitel zum Release passt.</p>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="DownloadLanguages">Sprachen (kommagetrennt, z.B. de,en)</label>
-                        <input id="DownloadLanguages" name="DownloadLanguages" type="text" is="emby-input" />
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="DownloadOnlySafeMatches" name="DownloadOnlySafeMatches" type="checkbox" is="emby-checkbox" />
-                            <span>Nur sichere Treffer automatisch speichern</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Sicher = gleiche Datei (Hash) oder gleiche Release-Gruppe und Quelle. Verhindert asynchrone Untertitel.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="DownloadRetryDays">Erneut suchen nach (Tagen)</label>
-                        <input id="DownloadRetryDays" name="DownloadRetryDays" type="number" step="1" min="1" max="365" is="emby-input" />
-                    </div>
-
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="DownloadOnlySafeMatches" type="checkbox" is="emby-checkbox" /><span>Ohne Audio-Prüfung nur sichere Treffer speichern</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Sicher = gleiche Datei (Hash) oder gleiche Release-Gruppe und Quelle. Mit aktivierter Synchronitätsprüfung (unten) werden auch andere Releases genommen, wenn sie nachweislich zur Tonspur passen.</div></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DownloadRetryDays">Erneut suchen nach (Tagen)</label><input id="DownloadRetryDays" type="number" step="1" min="1" max="365" is="emby-input" /></div>
                     <h3>SubDL</h3>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="SubDlApiKey">API-Key (kostenlos auf subdl.com → Konto → API)</label>
-                        <input id="SubDlApiKey" name="SubDlApiKey" type="password" autocomplete="off" is="emby-input" />
-                    </div>
-
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="SubDlApiKey">API-Key (kostenlos auf subdl.com → Konto → API)</label><input id="SubDlApiKey" type="password" autocomplete="off" is="emby-input" /></div>
                     <h3>OpenSubtitles.com</h3>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesApiKey">API-Key (opensubtitles.com → Profil → API consumers)</label>
-                        <input id="OpenSubtitlesApiKey" name="OpenSubtitlesApiKey" type="password" autocomplete="off" is="emby-input" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesUsername">Benutzername</label>
-                        <input id="OpenSubtitlesUsername" name="OpenSubtitlesUsername" type="text" autocomplete="off" is="emby-input" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesPassword">Passwort</label>
-                        <input id="OpenSubtitlesPassword" name="OpenSubtitlesPassword" type="password" autocomplete="off" is="emby-input" />
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="OpenSubtitlesOnlyHashMatches" name="OpenSubtitlesOnlyHashMatches" type="checkbox" is="emby-checkbox" />
-                            <span>Automatisch nur Hash-Treffer von OpenSubtitles laden</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Spart das knappe Tageslimit für Untertitel, die garantiert zur Datei passen.</div>
-                    </div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesApiKey">API-Key (opensubtitles.com → Profil → API consumers)</label><input id="OpenSubtitlesApiKey" type="password" autocomplete="off" is="emby-input" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesUsername">Benutzername</label><input id="OpenSubtitlesUsername" type="text" autocomplete="off" is="emby-input" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesPassword">Passwort</label><input id="OpenSubtitlesPassword" type="password" autocomplete="off" is="emby-input" /></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="OpenSubtitlesOnlyHashMatches" type="checkbox" is="emby-checkbox" /><span>Automatisch nur Hash-Treffer von OpenSubtitles laden</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Spart das knappe Tageslimit für Untertitel, die garantiert zur Datei passen.</div></div>
 
                     <h2 class="sectionTitle">Synchronität (Abgleich mit der Tonspur)</h2>
-                    <p>Erkennt, wann in der Tonspur gesprochen wird, und gleicht Untertitel daran an: Versatz, falsche Framerate (23,976/24/25) und Schnittunterschiede (z.B. anderes Intro). Funktioniert sprachunabhängig, also auch für deutsche Untertitel auf japanischem Ton. Die erste Analyse eines Films dauert je nach CPU 20 Sekunden bis wenige Minuten und wird danach zwischengespeichert.</p>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="SyncEnabled" name="SyncEnabled" type="checkbox" is="emby-checkbox" />
-                            <span>Heruntergeladene Untertitel gegen die Tonspur prüfen und korrigieren</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Damit dürfen auch Untertitel anderer Releases geladen werden – aber nur, wenn sie nachweislich zur Tonspur passen.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="SyncMaxCandidates">Maximal geprüfte Kandidaten pro Sprache</label>
-                        <input id="SyncMaxCandidates" name="SyncMaxCandidates" type="number" step="1" min="1" max="10" is="emby-input" />
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="SyncFixForeignSubtitles" name="SyncFixForeignSubtitles" type="checkbox" is="emby-checkbox" />
-                            <span>Auch fremde externe SRT-Dateien korrigieren</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Betrifft die Aufgabe „Untertitel-Synchronität prüfen und korrigieren“. Das Original bleibt als *.srt.orig erhalten.</div>
-                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="SyncEnabled" type="checkbox" is="emby-checkbox" /><span>Heruntergeladene Untertitel gegen die Tonspur prüfen und korrigieren</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Korrigiert Versatz, Framerate und Schnittunterschiede; verwirft Untertitel, die nicht zur Tonspur passen. Die erste Analyse eines Films dauert je nach CPU 20 Sekunden bis wenige Minuten.</div></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="SyncMaxCandidates">Maximal geprüfte Kandidaten pro Sprache</label><input id="SyncMaxCandidates" type="number" step="1" min="1" max="10" is="emby-input" /></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="SyncFixForeignSubtitles" type="checkbox" is="emby-checkbox" /><span>Auch fremde externe SRT-Dateien korrigieren</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Betrifft die Aufgabe „Untertitel-Synchronität prüfen und korrigieren“. Das Original bleibt als *.srt.orig erhalten.</div></div>
 
-                    <div>
-                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Speichern</span>
-                        </button>
-                    </div>
-                    <p>Nach dem Speichern den Web-Client neu laden (F5).</p>
+                    <h2 class="sectionTitle">Spracherkennung (Whisper)</h2>
+                    <p>Erzeugt Untertitel aus einer Tonspur, wenn nirgends ein passender Untertitel gefunden wurde, oder manuell über die Übersicht. Läuft auf der CPU; das Modell wird beim ersten Einsatz heruntergeladen. Ergebnis: Spur „Whisper“.</p>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperEnabled" type="checkbox" is="emby-checkbox" /><span>Whisper verwenden</span></label></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperAutoFallback" type="checkbox" is="emby-checkbox" /><span>Automatisch als letzter Ausweg (nach erfolgloser Suche)</span></label></div>
+                    <div class="selectContainer"><label class="selectLabel" for="WhisperModel">Modell</label>
+                        <select is="emby-select" id="WhisperModel" class="emby-select-withcolor emby-select">
+                            <option value="base">base – 60 MB, schnell, mehr Fehler</option>
+                            <option value="small">small – 190 MB, empfohlen für CPU</option>
+                            <option value="medium">medium – 540 MB, genauer, ca. 3× langsamer</option>
+                            <option value="large-v3-turbo">large-v3-turbo – 570 MB, sehr genau, nur Transkription</option>
+                        </select></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WhisperThreads">CPU-Threads (0 = automatisch)</label><input id="WhisperThreads" type="number" step="1" min="0" max="32" is="emby-input" /></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="WhisperTranslateToEnglish" type="checkbox" is="emby-checkbox" /><span>Englisch durch Übersetzung anderer Tonspuren erzeugen (experimentell)</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Whisper kann nur nach Englisch übersetzen; mit kleinen Modellen ist die Qualität mäßig.</div></div>
+
+                    <h2 class="sectionTitle">Neue Filme und Folgen</h2>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="ProcessNewItems" type="checkbox" is="emby-checkbox" /><span>Neu hinzugefügte Einträge automatisch bearbeiten</span></label></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="NewItemDelayMinutes">Wartezeit nach dem letzten neuen Eintrag (Minuten)</label><input id="NewItemDelayMinutes" type="number" step="1" min="1" max="240" is="emby-input" /></div>
+
+                    <div><button is="emby-button" type="submit" class="raised button-submit block emby-button"><span>Speichern</span></button></div>
+                    <p>Nach dem Speichern den Web-Client neu laden (F5), damit der neue Stil greift.</p>
                 </form>
             </div>
         </div>
         <script type="text/javascript">
-            var SubtitleForgeConfig = {
-                pluginUniqueId: 'f1e66da5-7fed-45f1-a6b8-79c253708fc8',
-                fields: ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrLanguages', 'OcrThreads', 'DownloadLanguages', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates'],
-                checks: ['StyleEnabled', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled', 'SyncFixForeignSubtitles'],
-                numbers: ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates']
-            };
+            (function () {
+                var pluginId = 'f1e66da5-7fed-45f1-a6b8-79c253708fc8';
+                var fields = ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent',
+                    'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
+                    'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes'];
+                var checks = ['StyleEnabled', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
+                    'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'WhisperTranslateToEnglish', 'ProcessNewItems'];
+                var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes'];
+                var outcomeText = {
+                    'ok': 'vorhanden', 'pending': 'noch nicht gesucht', 'none-found': 'nichts gefunden', 'no-safe-match': 'kein passender Treffer',
+                    'rejected-sync': 'verworfen: asynchron', 'download-failed': 'Download fehlgeschlagen', 'error': 'Fehler', 'saved': 'heruntergeladen'
+                };
+                var page = document.querySelector('#SubtitleForgeConfigPage');
+                var rows = [];
+                var queueTimer = null;
 
-            document.querySelector('#SubtitleForgeConfigPage').addEventListener('pageshow', function () {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(SubtitleForgeConfig.pluginUniqueId).then(function (config) {
-                    SubtitleForgeConfig.fields.forEach(function (f) {
-                        document.querySelector('#' + f).value = config[f];
-                    });
-                    SubtitleForgeConfig.checks.forEach(function (f) {
-                        document.querySelector('#' + f).checked = !!config[f];
-                    });
-                    Dashboard.hideLoadingMsg();
-                });
-            });
+                function el(tag, attrs, text) {
+                    var e = document.createElement(tag);
+                    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+                    if (text !== undefined) { e.textContent = text; }
+                    return e;
+                }
 
-            document.querySelector('#SubtitleForgeConfigForm').addEventListener('submit', function (e) {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(SubtitleForgeConfig.pluginUniqueId).then(function (config) {
-                    SubtitleForgeConfig.fields.forEach(function (f) {
-                        var v = document.querySelector('#' + f).value;
-                        config[f] = SubtitleForgeConfig.numbers.indexOf(f) >= 0 ? Number(v) : v;
+                function api(method, path) {
+                    return ApiClient.ajax({ type: method, url: ApiClient.getUrl(path), dataType: method === 'GET' ? 'json' : undefined });
+                }
+
+                function renderRows() {
+                    var tbody = page.querySelector('#sfRows');
+                    var filter = (page.querySelector('#sfFilter').value || '').toLowerCase();
+                    tbody.innerHTML = '';
+                    var shown = rows.filter(function (r) { return !filter || r.Name.toLowerCase().indexOf(filter) >= 0; });
+                    if (!shown.length) {
+                        tbody.appendChild(el('tr')).appendChild(el('td', { colspan: 3 }, 'Keine Einträge.'));
+                        return;
+                    }
+
+                    shown.slice(0, 500).forEach(function (r) {
+                        var tr = el('tr');
+                        var title = el('td');
+                        title.appendChild(el('div', {}, r.Name));
+                        title.appendChild(el('div', { 'class': 'sf-detail' }, 'Sprachen aus: ' + r.LanguageSource));
+                        tr.appendChild(title);
+
+                        var langs = el('td');
+                        r.Languages.forEach(function (l) {
+                            var ok = l.Have.length > 0;
+                            var cls = ok ? 'sf-ok' : (l.Outcome === 'pending' ? 'sf-wait' : 'sf-miss');
+                            var text = l.Language.toUpperCase() + ': ' + (ok ? l.Have.join(', ') : (outcomeText[l.Outcome] || l.Outcome));
+                            langs.appendChild(el('span', { 'class': 'sf-pill ' + cls, title: (l.Detail || '') + (l.Whisper ? '\nWhisper: ' + l.Whisper : '') }, text));
+                            if (!ok && (l.Detail || l.Whisper)) {
+                                langs.appendChild(el('div', { 'class': 'sf-detail' }, (l.Detail || '') + (l.Whisper ? ' · Whisper: ' + l.Whisper : '')));
+                            }
+                        });
+                        tr.appendChild(langs);
+
+                        var actions = el('td', { 'class': 'sf-actions' });
+                        var search = el('button', { is: 'emby-button', type: 'button', 'class': 'raised' });
+                        search.appendChild(el('span', {}, 'Neu suchen'));
+                        search.addEventListener('click', function () {
+                            api('POST', 'SubtitleForge/Items/' + r.Id + '/Search').then(function () { Dashboard.alert('Suche für „' + r.Name + '“ eingeplant.'); refreshQueue(); });
+                        });
+                        actions.appendChild(search);
+
+                        var audio = el('select', { title: 'Tonspur' });
+                        r.AudioTracks.forEach(function (a) { audio.appendChild(el('option', { value: a.Index }, a.Title || a.Language || ('Spur ' + a.Index))); });
+                        var lang = el('select', { title: 'Zielsprache' });
+                        var wanted = r.Languages.map(function (l) { return l.Language; });
+                        ['de', 'en', 'ja', 'fr', 'es', 'it'].concat(wanted).filter(function (v, i, a) { return a.indexOf(v) === i; })
+                            .forEach(function (code) { lang.appendChild(el('option', { value: code }, code.toUpperCase())); });
+                        var whisper = el('button', { is: 'emby-button', type: 'button', 'class': 'raised' });
+                        whisper.appendChild(el('span', {}, 'Whisper'));
+                        whisper.addEventListener('click', function () {
+                            var replace = page.querySelector('#sfReplace').checked;
+                            api('POST', 'SubtitleForge/Items/' + r.Id + '/Whisper?language=' + lang.value + '&audioIndex=' + audio.value + '&replace=' + replace)
+                                .then(function () { Dashboard.alert('Whisper für „' + r.Name + '“ (' + lang.value.toUpperCase() + ') eingeplant. Das kann je nach Länge und CPU dauern.'); refreshQueue(); });
+                        });
+                        actions.appendChild(audio);
+                        actions.appendChild(lang);
+                        actions.appendChild(whisper);
+                        tr.appendChild(actions);
+                        tbody.appendChild(tr);
                     });
-                    SubtitleForgeConfig.checks.forEach(function (f) {
-                        config[f] = document.querySelector('#' + f).checked;
+                }
+
+                function loadReport() {
+                    var only = page.querySelector('#sfOnlyMissing').checked;
+                    page.querySelector('#sfRows').innerHTML = '<tr><td colspan="3">Wird geladen …</td></tr>';
+                    api('GET', 'SubtitleForge/Report?onlyMissing=' + only).then(function (data) { rows = data || []; renderRows(); });
+                }
+
+                function refreshQueue() {
+                    api('GET', 'SubtitleForge/Queue').then(function (q) {
+                        var box = page.querySelector('#sfQueue');
+                        box.innerHTML = '';
+                        box.appendChild(el('div', {}, q.current ? ('Läuft gerade: ' + q.current.name + ' (' + q.current.kind + (q.current.language ? ' ' + q.current.language.toUpperCase() : '') + ')') : 'Gerade läuft nichts.'));
+                        if (q.pending && q.pending.length) {
+                            box.appendChild(el('div', {}, 'Wartend: ' + q.pending.map(function (p) { return p.name + ' (' + p.kind + ')'; }).join(', ')));
+                        }
+
+                        (q.log || []).slice(0, 5).forEach(function (line) { box.appendChild(el('div', { 'class': 'sf-detail' }, line)); });
                     });
-                    ApiClient.updatePluginConfiguration(SubtitleForgeConfig.pluginUniqueId, config).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
+                }
+
+                function showTab(name) {
+                    page.querySelectorAll('.sf-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === name); });
+                    page.querySelector('#sfOverview').style.display = name === 'overview' ? '' : 'none';
+                    page.querySelector('#SubtitleForgeConfigForm').style.display = name === 'settings' ? '' : 'none';
+                }
+
+                page.querySelectorAll('.sf-tab').forEach(function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
+                page.querySelector('#sfFilter').addEventListener('input', renderRows);
+                page.querySelector('#sfOnlyMissing').addEventListener('change', loadReport);
+                page.querySelector('#sfReload').addEventListener('click', function () { loadReport(); refreshQueue(); });
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        fields.forEach(function (f) { page.querySelector('#' + f).value = config[f]; });
+                        checks.forEach(function (f) { page.querySelector('#' + f).checked = !!config[f]; });
+                        Dashboard.hideLoadingMsg();
                     });
+                    loadReport();
+                    refreshQueue();
+                    queueTimer = setInterval(refreshQueue, 10000);
                 });
-                e.preventDefault();
-                return false;
-            });
+                page.addEventListener('pagehide', function () { if (queueTimer) { clearInterval(queueTimer); } });
+
+                page.querySelector('#SubtitleForgeConfigForm').addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        fields.forEach(function (f) {
+                            var v = page.querySelector('#' + f).value;
+                            config[f] = numbers.indexOf(f) >= 0 ? Number(v) : v;
+                        });
+                        checks.forEach(function (f) { config[f] = page.querySelector('#' + f).checked; });
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    e.preventDefault();
+                    return false;
+                });
+            })();
         </script>
     </div>
 </body>

@@ -47,6 +47,13 @@ public class ForgeSubtitleProvider : ISubtitleProvider
     /// <inheritdoc />
     public async Task<IEnumerable<RemoteSubtitleInfo>> Search(SubtitleSearchRequest request, CancellationToken cancellationToken)
     {
+        // Jellyfin's own automatic download picks the first result without checking the audio. SubtitleForge's
+        // download task does that properly, so only serve interactive searches.
+        if (request.IsAutomated)
+        {
+            return Array.Empty<RemoteSubtitleInfo>();
+        }
+
         var lang = Lang.ToTwoLetter(request.TwoLetterISOLanguageName) ?? Lang.ToTwoLetter(request.Language);
         if (lang is null)
         {

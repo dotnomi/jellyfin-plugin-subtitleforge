@@ -2,6 +2,7 @@ using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Providers;
 using Jellyfin.Plugin.SubtitleForge.Styling;
 using Jellyfin.Plugin.SubtitleForge.Sync;
+using Jellyfin.Plugin.SubtitleForge.Whisper;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.AspNetCore.Hosting;
@@ -27,5 +28,11 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<SpeechAnalyzer>();
         serviceCollection.AddSingleton<SyncService>();
         serviceCollection.AddSingleton<MediaBrowser.Controller.Subtitles.ISubtitleProvider, ForgeSubtitleProvider>();
+        serviceCollection.AddSingleton<LanguageResolver>();
+        serviceCollection.AddSingleton<WhisperModels>();
+        serviceCollection.AddSingleton<WhisperService>();
+        serviceCollection.AddSingleton<ItemProcessor>();
+        serviceCollection.AddSingleton<WorkQueue>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<WorkQueue>());
     }
 }

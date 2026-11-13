@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace Jellyfin.Plugin.SubtitleForge.Providers;
@@ -30,11 +31,38 @@ public class DownloadStateStore
     /// <param name="language">Language.</param>
     /// <param name="outcome">Outcome.</param>
     /// <param name="detail">Detail text.</param>
-    public void Set(Guid itemId, string language, string outcome, string? detail)
+    /// <param name="reference">Source + reference of a saved download (to block it later).</param>
+    public void Set(Guid itemId, string language, string outcome, string? detail, string? reference = null)
     {
-        Load()[Key(itemId, language)] = new Entry { LastTriedUtc = DateTime.UtcNow, Outcome = outcome, Detail = detail };
+        Load()[Key(itemId, language)] = new Entry { LastTriedUtc = DateTime.UtcNow, Outcome = outcome, Detail = detail, Reference = reference };
         Save();
     }
+
+    /// <summary>
+    /// Blocks a downloaded subtitle so it is never chosen again for this item and language.
+    /// </summary>
+    /// <param name="itemId">Item.</param>
+    /// <param name="language">Language.</param>
+    /// <param name="reference">Source + reference.</param>
+    public void Block(Guid itemId, string language, string reference)
+    {
+        var key = Key(itemId, "block:" + language);
+        var entries = Load();
+        var existing = entries.TryGetValue(key, out var e) ? e.Detail ?? string.Empty : string.Empty;
+        var set = new System.Collections.Generic.HashSet<string>(existing.Split('\n', StringSplitOptions.RemoveEmptyEntries)) { reference };
+        entries[key] = new Entry { LastTriedUtc = DateTime.UtcNow, Outcome = "blocked", Detail = string.Join('\n', set) };
+        Save();
+    }
+
+    /// <summary>
+    /// Whether a download is blocked.
+    /// </summary>
+    /// <param name="itemId">Item.</param>
+    /// <param name="language">Language.</param>
+    /// <param name="reference">Source + reference.</param>
+    /// <returns>True if blocked.</returns>
+    public bool IsBlocked(Guid itemId, string language, string reference) =>
+        Get(itemId, "block:" + language)?.Detail?.Split('\n').Contains(reference) == true;
 
     private static string Key(Guid id, string lang) => id.ToString("N") + ":" + lang;
 
@@ -103,5 +131,8 @@ public class DownloadStateStore
 
         /// <summary>Gets or sets details.</summary>
         public string? Detail { get; set; }
+
+        /// <summary>Gets or sets "Source|Reference" of a saved download.</summary>
+        public string? Reference { get; set; }
     }
 }

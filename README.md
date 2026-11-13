@@ -9,6 +9,11 @@ Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen D
 | **Einheitlicher Untertitel-Stil** | Schrift, Größe, Farbe, Rand, Hintergrund und Position werden vom Server vorgegeben und im Web-Client und in Jellyfin Desktop erzwungen (Skript-Injection in `index.html`, ohne Dateien zu ändern). Für Android TV und Handy-Apps schreibt das Plugin bereinigte SRT-Dateien, damit dort die App-Einstellungen einheitlich greifen. |
 | **Bild-Untertitel → Text (OCR)** | Geplante Aufgabe. Eingebettete PGS-Untertitel (Blu-ray) werden per eigenem PGS-Decoder und PaddleOCR (PP-OCRv5 Latin, ONNX) einmalig in `Film.deu.OCR.srt` umgewandelt. |
 | **Fehlende Untertitel herunterladen** | Geplante Aufgabe sowie Eintrag „SubtitleForge“ in Jellyfins Untertitelsuche. Quellen sind SubDL und OpenSubtitles.com (OpenSubtitles automatisch nur bei Hash-Treffer, um das Tageslimit zu schonen). Die Kandidaten werden danach bewertet, wie gut sie zum Release passen (Gruppe, Quelle, Dienst, Auflösung, Fassung, Folge). |
+| **Sprachen pro Film/Serie/Bibliothek** | Tag `subs:de,ja` im Metadaten-Editor (an der Serie gilt er für alle Folgen, `subs:none` schaltet ab) → Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ → Plugin-Standard. |
+| **Forced-Erkennung** | Forced-Untertitel (nur Schilder/Fremdsprache) werden am Release-Namen und an der geringen Abdeckung der Dialoge erkannt und als `.forced` gespeichert, nie als voller Untertitel. |
+| **Spracherkennung (Whisper)** | Erzeugt Untertitel aus einer Tonspur (CPU, whisper.cpp): automatisch als letzter Ausweg oder manuell pro Film/Folge mit frei wählbarer Tonspur und Zielsprache. Optional ersetzt das Ergebnis einen heruntergeladenen Untertitel, der dann nie wieder geladen wird. Übersetzen geht nur nach Englisch. |
+| **Neue Einträge sofort** | Neu hinzugefügte Filme und Folgen werden automatisch bearbeitet, sobald der Bibliotheks-Scan ruhig ist. |
+| **Übersicht** | Die Plugin-Seite zeigt pro Film/Folge, welche Sprachen vorhanden sind oder fehlen und warum (nichts gefunden, verworfen wegen Asynchronität …), mit den Aktionen „Neu suchen“ und „Whisper“. |
 | **Synchronität prüfen und korrigieren** | Silero VAD erkennt Sprache in der Tonspur (bei Surround-Ton im Center-Kanal). Der Abgleich korrigiert Versatz, Framerate (23,976/24/25) und Schnittunterschiede, sprachunabhängig. Untertitel, die nicht zur Tonspur passen, werden verworfen; bereits synchrone Untertitel bleiben unverändert. |
 
 ## Geplante Aufgaben (Dashboard → Geplante Aufgaben → SubtitleForge)
@@ -16,7 +21,7 @@ Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen D
 | Aufgabe | Standard-Zeitplan |
 |---|---|
 | Bild-Untertitel in Text umwandeln (OCR) | täglich 03:00 |
-| Fehlende Untertitel herunterladen | täglich 04:00 |
+| Fehlende Untertitel herunterladen (inkl. Whisper-Fallback) | täglich 04:00 |
 | Untertitel-Synchronität prüfen und korrigieren | nur manuell |
 
 ## Bauen
