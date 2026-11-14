@@ -92,10 +92,15 @@ public sealed class WhisperService : IDisposable
             return (same, language);
         }
 
+        if (!config.TranslationEnabled)
+        {
+            return null;
+        }
+
         var best = audio
             .Select(a => (Audio: a, Lang: Lang.ToTwoLetter(a.Language)))
-            .Where(x => x.Lang is not null && TranslationService.RouteCost(x.Lang!, language) is not null)
-            .OrderBy(x => TranslationService.RouteCost(x.Lang!, language))
+            .Where(x => x.Lang is not null && TranslationModels.Route(x.Lang!, language) is not null)
+            .OrderBy(x => TranslationModels.Route(x.Lang!, language)!.Count)
             .ThenBy(x => RecognitionRank(x.Lang!))
             .ThenByDescending(x => x.Audio.IsDefault)
             .FirstOrDefault();
@@ -132,7 +137,7 @@ public sealed class WhisperService : IDisposable
 
             if (source != language && !TranslationService.CanTranslate(source, language))
             {
-                return new WhisperOutcome(false, $"keine Übersetzung {source} → {language} verfügbar (offline: de↔en, ja↔en, ja↔de über Englisch; mit DeepL-Key fast alle Sprachen)");
+                return new WhisperOutcome(false, $"keine Übersetzung {source} → {language} verfügbar (Offline-Übersetzung: de↔en, ja↔en, ja↔de über Englisch)");
             }
 
             sourceLanguage = source;
@@ -167,7 +172,6 @@ public sealed class WhisperService : IDisposable
 
             var threads = config.WhisperThreads > 0 ? config.WhisperThreads : Math.Clamp(Environment.ProcessorCount - 1, 1, 8);
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var usedEngine = string.Empty;
             var segments = await Task.Run(
                 () => WhisperEngine.TranscribeAsync(modelPath, pcm, windows, sourceLanguage, false, threads, progress, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
@@ -176,10 +180,9 @@ public sealed class WhisperService : IDisposable
             {
                 // Clean first (hallucinations, loops), then translate the remaining sentences.
                 segments = segments.Select(s => s with { Text = WhisperPostProcessor.CutRepetitions(s.Text) }).ToList();
-                var (texts, engine) = await _translation.TranslateAsync(
+                var texts = await _translation.TranslateAsync(
                     segments.Select(s => s.Text).ToList(), sourceLanguage, language, Path.Combine(dataDir, "translation-models"), threads, null, cancellationToken).ConfigureAwait(false);
                 segments = segments.Zip(texts, (s, t) => s with { Text = t }).Where(s => s.Text.Length > 0).ToList();
-                usedEngine = engine;
             }
 
             var cues = WhisperPostProcessor.ToCues(segments, speech);
@@ -191,7 +194,7 @@ public sealed class WhisperService : IDisposable
             var stem = SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(language), false, translate ? FileTag + "-" + sourceLanguage : FileTag);
             var path = await _writer.SaveAsync(video, stem, Srt.Write(cues), cancellationToken).ConfigureAwait(false);
             var message = FormattableString.Invariant(
-                $"Whisper {model.Key}: {cues.Count} Untertitel aus Tonspur {sourceLanguage}{(translate ? $", übersetzt nach {language} ({usedEngine})" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min");
+                $"Whisper {model.Key}: {cues.Count} Untertitel aus Tonspur {sourceLanguage}{(translate ? $", übersetzt nach {language}" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min");
             _logger.LogInformation("SubtitleForge: {Message} → {Path}", message, path);
             return new WhisperOutcome(true, message, path);
         }

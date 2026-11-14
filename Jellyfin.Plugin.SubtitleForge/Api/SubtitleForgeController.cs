@@ -25,7 +25,6 @@ public class SubtitleForgeController : ControllerBase
     private readonly LanguageResolver _languages;
     private readonly DownloadStateStore _state;
     private readonly WorkQueue _queue;
-    private readonly Translation.DeepLTranslator _deepL;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SubtitleForgeController"/> class.
@@ -34,10 +33,8 @@ public class SubtitleForgeController : ControllerBase
     /// <param name="languages">Language resolver.</param>
     /// <param name="state">State store.</param>
     /// <param name="queue">Work queue.</param>
-    /// <param name="deepL">DeepL client.</param>
-    public SubtitleForgeController(ILibraryManager libraryManager, LanguageResolver languages, DownloadStateStore state, WorkQueue queue, Translation.DeepLTranslator deepL)
+    public SubtitleForgeController(ILibraryManager libraryManager, LanguageResolver languages, DownloadStateStore state, WorkQueue queue)
     {
-        _deepL = deepL;
         _libraryManager = libraryManager;
         _languages = languages;
         _state = state;
@@ -128,20 +125,6 @@ public class SubtitleForgeController : ControllerBase
 
         _queue.Enqueue(new WorkItem(id, WorkKind.Whisper, lang, audioIndex, DateTime.UtcNow, replace));
         return Accepted();
-    }
-
-    /// <summary>
-    /// DeepL character usage of the configured key.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation.</param>
-    /// <returns>Usage or 404 when no key / not reachable.</returns>
-    [HttpGet("DeepL/Usage")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async System.Threading.Tasks.Task<ActionResult<object>> DeepLUsage(System.Threading.CancellationToken cancellationToken)
-    {
-        var usage = await _deepL.GetUsageAsync(cancellationToken).ConfigureAwait(false);
-        return usage is { } u ? Ok(new { used = u.Used, limit = u.Limit }) : NotFound();
     }
 
     /// <summary>
