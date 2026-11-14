@@ -32,6 +32,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<LanguageResolver>();
         serviceCollection.AddSingleton<WhisperModels>();
         serviceCollection.AddSingleton<TranslationModels>();
+        serviceCollection.AddSingleton<DeepLTranslator>();
         serviceCollection.AddSingleton<TranslationService>();
         serviceCollection.AddSingleton<WhisperService>();
         serviceCollection.AddSingleton<ItemProcessor>();

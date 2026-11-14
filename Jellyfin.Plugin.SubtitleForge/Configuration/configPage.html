@@ -109,6 +109,10 @@
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="TranslationEnabled" type="checkbox" is="emby-checkbox" /><span>In andere Sprachen übersetzen (offline)</span></label>
                         <div class="fieldDescription checkboxFieldDescription">Gibt es keine Tonspur in der gewünschten Sprache, wird die am besten erkannte Tonspur transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Modelle (~110–150 MB je Richtung) werden beim ersten Einsatz geladen. Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen.</div></div>
 
+                    <h3>DeepL (bevorzugt, wenn ein Key eingetragen ist)</h3>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DeepLApiKey">DeepL-API-Key (deepl.com → API Free: 500.000 Zeichen/Monat gratis)</label><input id="DeepLApiKey" type="password" autocomplete="off" is="emby-input" />
+                        <div class="fieldDescription">Übersetzt direkt und deutlich besser, besonders Japanisch. Der Untertiteltext wird dafür an DeepL gesendet. Ist das Kontingent aufgebraucht, übernehmen die Offline-Modelle. <span id="sfDeepLUsage"></span></div></div>
+
                     <h2 class="sectionTitle">Neue Filme und Folgen</h2>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="ProcessNewItems" type="checkbox" is="emby-checkbox" /><span>Neu hinzugefügte Einträge automatisch bearbeiten</span></label></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="NewItemDelayMinutes">Wartezeit nach dem letzten neuen Eintrag (Minuten)</label><input id="NewItemDelayMinutes" type="number" step="1" min="1" max="240" is="emby-input" /></div>
@@ -123,7 +127,7 @@
                 var pluginId = 'f1e66da5-7fed-45f1-a6b8-79c253708fc8';
                 var fields = ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent',
                     'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
-                    'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes'];
+                    'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes', 'DeepLApiKey'];
                 var checks = ['StyleEnabled', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
                     'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems'];
                 var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes'];
@@ -244,6 +248,9 @@
                     loadReport();
                     refreshQueue();
                     queueTimer = setInterval(refreshQueue, 10000);
+                    api('GET', 'SubtitleForge/DeepL/Usage').then(function (u) {
+                        page.querySelector('#sfDeepLUsage').textContent = 'Verbraucht: ' + u.used.toLocaleString() + ' von ' + u.limit.toLocaleString() + ' Zeichen.';
+                    }, function () { });
                 });
                 page.addEventListener('pagehide', function () { if (queueTimer) { clearInterval(queueTimer); } });
 

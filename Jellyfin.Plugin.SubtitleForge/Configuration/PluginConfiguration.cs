@@ -162,6 +162,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool TranslationEnabled { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets the DeepL API key (Free keys end with ":fx"). When set, DeepL is preferred; offline models are the fallback.
+    /// </summary>
+    public string DeepLApiKey { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets a value indicating whether newly added movies/episodes are processed automatically.
     /// </summary>
     public bool ProcessNewItems { get; set; } = true;
