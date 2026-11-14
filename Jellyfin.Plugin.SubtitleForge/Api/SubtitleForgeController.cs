@@ -83,6 +83,7 @@ public class SubtitleForgeController : ControllerBase
                 Id = video.Id,
                 Name = Title(video),
                 LanguageSource = source,
+                WhisperAuto = LanguageResolver.ResolveWhisperAuto(video, out var whisperSource) ? "automatisch (" + whisperSource + ")" : "manuell (" + whisperSource + ")",
                 Languages = langs,
                 AudioTracks = streams.Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal).OrderBy(s => s.Index)
                     .Select((s, i) => new ReportAudio { Index = i, Language = s.Language, Title = s.DisplayTitle }).ToList(),
@@ -169,6 +170,9 @@ public class SubtitleForgeController : ControllerBase
 
         /// <summary>Gets or sets where the language setting came from.</summary>
         public string LanguageSource { get; set; } = string.Empty;
+
+        /// <summary>Gets or sets whether Whisper runs automatically for this item and why.</summary>
+        public string WhisperAuto { get; set; } = string.Empty;
 
         /// <summary>Gets or sets the per-language status.</summary>
         public List<ReportLanguage> Languages { get; set; } = new();

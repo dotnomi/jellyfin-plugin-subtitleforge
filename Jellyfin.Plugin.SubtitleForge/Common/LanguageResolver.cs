@@ -18,6 +18,9 @@ public class LanguageResolver
     /// <summary>Tag prefix.</summary>
     public const string TagPrefix = "subs:";
 
+    /// <summary>Tag prefix for the automatic Whisper switch ("whisper:auto" / "whisper:off").</summary>
+    public const string WhisperTagPrefix = "whisper:";
+
     private readonly ILibraryManager _libraryManager;
 
     /// <summary>
@@ -48,6 +51,50 @@ public class LanguageResolver
         }
 
         return ParseList(value);
+    }
+
+    /// <summary>
+    /// Parses a Whisper tag: "whisper:auto" (also on/an/ja) → true, "whisper:off" (also aus/nein/manual) → false.
+    /// </summary>
+    /// <param name="tag">Tag.</param>
+    /// <returns>Switch, or null if not a Whisper tag.</returns>
+    public static bool? ParseWhisperTag(string tag)
+    {
+        if (!tag.StartsWith(WhisperTagPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return tag[WhisperTagPrefix.Length..].Trim().ToLowerInvariant() switch
+        {
+            "auto" or "on" or "an" or "ja" or "yes" => true,
+            "off" or "aus" or "nein" or "no" or "manual" or "manuell" => false,
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Whether Whisper runs automatically for an item: tag on the item/season/series wins, otherwise the plugin setting.
+    /// </summary>
+    /// <param name="item">Item.</param>
+    /// <param name="source">Where the decision came from.</param>
+    /// <returns>True if automatic.</returns>
+    public static bool ResolveWhisperAuto(BaseItem item, out string source)
+    {
+        foreach (var candidate in Chain(item))
+        {
+            foreach (var tag in candidate.Tags ?? Array.Empty<string>())
+            {
+                if (ParseWhisperTag(tag) is { } value)
+                {
+                    source = "Tag an " + candidate.Name;
+                    return value;
+                }
+            }
+        }
+
+        source = "Plugin-Einstellung";
+        return (Plugin.Instance?.Configuration ?? new PluginConfiguration()).WhisperAutoFallback;
     }
 
     /// <summary>

@@ -37,7 +37,7 @@
                         <label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" id="sfReplace" checked /><span>Whisper ersetzt heruntergeladene Untertitel</span></label>
                         <button is="emby-button" type="button" class="raised" id="sfReload"><span>Aktualisieren</span></button>
                     </div>
-                    <p class="sf-detail">Sprachen pro Serie/Film: im Metadaten-Editor den Tag <code>subs:de,ja</code> setzen (an der Serie gilt er für alle Folgen; <code>subs:none</code> schaltet ab). Sonst gelten die Sprachen der Bibliothek bzw. der Plugin-Standard.</p>
+                    <p class="sf-detail">Sprachen pro Serie/Film: im Metadaten-Editor den Tag <code>subs:de,ja</code> setzen (an der Serie gilt er für alle Folgen; <code>subs:none</code> schaltet ab). Sonst gelten die Sprachen der Bibliothek bzw. der Plugin-Standard. Tag <code>whisper:auto</code> lässt Whisper für diese Serie/diesen Film automatisch laufen, wenn kein passender Untertitel gefunden wurde; <code>whisper:off</code> verhindert es.</p>
                     <table class="sf">
                         <thead><tr><th>Titel</th><th>Sprachen</th><th>Aktionen</th></tr></thead>
                         <tbody id="sfRows"><tr><td colspan="3">Wird geladen …</td></tr></tbody>
@@ -98,7 +98,7 @@
                     <p>Erzeugt Untertitel aus einer Tonspur – manuell über die Übersicht, optional automatisch, wenn nirgends ein passender Untertitel gefunden wurde. Läuft auf der CPU; das Modell wird beim ersten Einsatz heruntergeladen. Ergebnis: Spur „Whisper“.</p>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperEnabled" type="checkbox" is="emby-checkbox" /><span>Whisper verwenden</span></label></div>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperAutoFallback" type="checkbox" is="emby-checkbox" /><span>Automatisch als letzter Ausweg (nach erfolgloser Suche)</span></label>
-                        <div class="fieldDescription checkboxFieldDescription">Standardmäßig aus: Whisper wird dann nur manuell über die Übersicht gestartet (pro Film/Folge, Tonspur und Zielsprache frei wählbar). Automatisch kann es auf kleinen CPUs viele Stunden Rechenzeit kosten.</div></div>
+                        <div class="fieldDescription checkboxFieldDescription">Gilt für alle Filme/Serien ohne Tag. Einzelne Serien/Filme schaltest du mit dem Tag <code>whisper:auto</code> bzw. <code>whisper:off</code> im Metadaten-Editor um. Standardmäßig aus: Whisper wird dann nur manuell über die Übersicht gestartet (pro Film/Folge, Tonspur und Zielsprache frei wählbar). Automatisch kann es auf kleinen CPUs viele Stunden Rechenzeit kosten.</div></div>
                     <div class="selectContainer"><label class="selectLabel" for="WhisperModel">Modell</label>
                         <select is="emby-select" id="WhisperModel" class="emby-select-withcolor emby-select">
                             <option value="base">base – 60 MB, schnell, mehr Fehler</option>
@@ -161,7 +161,7 @@
                         var tr = el('tr');
                         var title = el('td');
                         title.appendChild(el('div', {}, r.Name));
-                        title.appendChild(el('div', { 'class': 'sf-detail' }, 'Sprachen aus: ' + r.LanguageSource));
+                        title.appendChild(el('div', { 'class': 'sf-detail' }, 'Sprachen aus: ' + r.LanguageSource + ' · Whisper: ' + r.WhisperAuto));
                         tr.appendChild(title);
 
                         var langs = el('td');

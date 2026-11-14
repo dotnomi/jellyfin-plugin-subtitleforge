@@ -17,6 +17,15 @@ public class FeatureTests
         Assert.Equal(expected, string.Join(',', LanguageResolver.ParseTag(tag)!));
     }
 
+    [Theory]
+    [InlineData("whisper:auto", true)]
+    [InlineData("Whisper: AN", true)]
+    [InlineData("whisper:off", false)]
+    [InlineData("whisper:manuell", false)]
+    [InlineData("whisper:egal", null)]
+    [InlineData("subs:de", null)]
+    public void WhisperTag_Parses(string tag, bool? expected) => Assert.Equal(expected, LanguageResolver.ParseWhisperTag(tag));
+
     [Fact]
     public void LanguageTag_IgnoresOtherTags() => Assert.Null(LanguageResolver.ParseTag("Anime"));
 

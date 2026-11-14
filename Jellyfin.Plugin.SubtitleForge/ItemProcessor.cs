@@ -147,7 +147,8 @@ public sealed class ItemProcessor : IDisposable
                 written += await DownloadAsync(video, languages, config, force, cancellationToken).ConfigureAwait(false);
             }
 
-            if (steps.HasFlag(ProcessSteps.Whisper) && config.WhisperEnabled && config.WhisperAutoFallback)
+            // Automatic Whisper only where wanted: tag "whisper:auto" on the film/series, or the global switch.
+            if (steps.HasFlag(ProcessSteps.Whisper) && config.WhisperEnabled && LanguageResolver.ResolveWhisperAuto(video, out _))
             {
                 written += await WhisperFallbackAsync(video, languages, force, cancellationToken).ConfigureAwait(false);
             }
