@@ -11,7 +11,7 @@ Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen D
 | **Fehlende Untertitel herunterladen** | Geplante Aufgabe sowie Eintrag „SubtitleForge“ in Jellyfins Untertitelsuche. Quellen sind SubDL und OpenSubtitles.com (OpenSubtitles automatisch nur bei Hash-Treffer, um das Tageslimit zu schonen). Die Kandidaten werden danach bewertet, wie gut sie zum Release passen (Gruppe, Quelle, Dienst, Auflösung, Fassung, Folge). |
 | **Sprachen pro Film/Serie/Bibliothek** | Tag `subs:de,ja` im Metadaten-Editor (an der Serie gilt er für alle Folgen, `subs:none` schaltet ab) → Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ → Plugin-Standard. |
 | **Forced-Erkennung** | Forced-Untertitel (nur Schilder/Fremdsprache) werden am Release-Namen und an der geringen Abdeckung der Dialoge erkannt und als `.forced` gespeichert, nie als voller Untertitel. |
-| **Spracherkennung (Whisper)** | Erzeugt Untertitel aus einer Tonspur (CPU, whisper.cpp): automatisch als letzter Ausweg oder manuell pro Film/Folge mit frei wählbarer Tonspur und Zielsprache. Optional ersetzt das Ergebnis einen heruntergeladenen Untertitel, der dann nie wieder geladen wird. |
+| **Spracherkennung (Whisper)** | Erzeugt Untertitel aus einer Tonspur (CPU, whisper.cpp): manuell pro Film/Folge mit frei wählbarer Tonspur und Zielsprache; optional (standardmäßig aus) automatisch als letzter Ausweg. Optional ersetzt das Ergebnis einen heruntergeladenen Untertitel, der dann nie wieder geladen wird. |
 | **Offline-Übersetzung** | Weicht die Tonspur-Sprache von der Zielsprache ab, wird transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Ohne passende Tonspur nimmt das Plugin automatisch die am besten erkannte (z.B. deutschen Dub vor Japanisch). Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen. |
 | **Neue Einträge sofort** | Neu hinzugefügte Filme und Folgen werden automatisch bearbeitet, sobald der Bibliotheks-Scan ruhig ist. |
 | **Übersicht** | Die Plugin-Seite zeigt pro Film/Folge, welche Sprachen vorhanden sind oder fehlen und warum (nichts gefunden, verworfen wegen Asynchronität …), mit den Aktionen „Neu suchen“ und „Whisper“. |
@@ -22,7 +22,7 @@ Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen D
 | Aufgabe | Standard-Zeitplan |
 |---|---|
 | Bild-Untertitel in Text umwandeln (OCR) | täglich 03:00 |
-| Fehlende Untertitel herunterladen (inkl. Whisper-Fallback) | täglich 04:00 |
+| Fehlende Untertitel herunterladen (Whisper-Fallback nur, wenn aktiviert) | täglich 04:00 |
 | Untertitel-Synchronität prüfen und korrigieren | nur manuell |
 
 ## Bauen

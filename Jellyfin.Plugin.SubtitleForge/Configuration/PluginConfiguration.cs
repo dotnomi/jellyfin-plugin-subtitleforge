@@ -142,8 +142,9 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets a value indicating whether Whisper runs automatically when no fitting subtitle was found.
+    /// Off by default: Whisper is expensive on small CPUs, so it is started manually per film/episode.
     /// </summary>
-    public bool WhisperAutoFallback { get; set; } = true;
+    public bool WhisperAutoFallback { get; set; }
 
     /// <summary>
     /// Gets or sets the Whisper model: base, small, medium, large-v3-turbo.

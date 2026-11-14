@@ -95,9 +95,10 @@
                         <div class="fieldDescription checkboxFieldDescription">Betrifft die Aufgabe „Untertitel-Synchronität prüfen und korrigieren“. Das Original bleibt als *.srt.orig erhalten.</div></div>
 
                     <h2 class="sectionTitle">Spracherkennung (Whisper)</h2>
-                    <p>Erzeugt Untertitel aus einer Tonspur, wenn nirgends ein passender Untertitel gefunden wurde, oder manuell über die Übersicht. Läuft auf der CPU; das Modell wird beim ersten Einsatz heruntergeladen. Ergebnis: Spur „Whisper“.</p>
+                    <p>Erzeugt Untertitel aus einer Tonspur – manuell über die Übersicht, optional automatisch, wenn nirgends ein passender Untertitel gefunden wurde. Läuft auf der CPU; das Modell wird beim ersten Einsatz heruntergeladen. Ergebnis: Spur „Whisper“.</p>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperEnabled" type="checkbox" is="emby-checkbox" /><span>Whisper verwenden</span></label></div>
-                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperAutoFallback" type="checkbox" is="emby-checkbox" /><span>Automatisch als letzter Ausweg (nach erfolgloser Suche)</span></label></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperAutoFallback" type="checkbox" is="emby-checkbox" /><span>Automatisch als letzter Ausweg (nach erfolgloser Suche)</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Standardmäßig aus: Whisper wird dann nur manuell über die Übersicht gestartet (pro Film/Folge, Tonspur und Zielsprache frei wählbar). Automatisch kann es auf kleinen CPUs viele Stunden Rechenzeit kosten.</div></div>
                     <div class="selectContainer"><label class="selectLabel" for="WhisperModel">Modell</label>
                         <select is="emby-select" id="WhisperModel" class="emby-select-withcolor emby-select">
                             <option value="base">base – 60 MB, schnell, mehr Fehler</option>
