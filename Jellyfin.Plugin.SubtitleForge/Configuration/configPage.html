@@ -106,8 +106,8 @@
                             <option value="large-v3-turbo">large-v3-turbo – 570 MB, sehr genau, nur Transkription</option>
                         </select></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WhisperThreads">CPU-Threads (0 = automatisch)</label><input id="WhisperThreads" type="number" step="1" min="0" max="32" is="emby-input" /></div>
-                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="WhisperTranslateToEnglish" type="checkbox" is="emby-checkbox" /><span>Englisch durch Übersetzung anderer Tonspuren erzeugen (experimentell)</span></label>
-                        <div class="fieldDescription checkboxFieldDescription">Whisper kann nur nach Englisch übersetzen; mit kleinen Modellen ist die Qualität mäßig.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="TranslationEnabled" type="checkbox" is="emby-checkbox" /><span>In andere Sprachen übersetzen (offline)</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Gibt es keine Tonspur in der gewünschten Sprache, wird die am besten erkannte Tonspur transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Modelle (~110–150 MB je Richtung) werden beim ersten Einsatz geladen. Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen.</div></div>
 
                     <h2 class="sectionTitle">Neue Filme und Folgen</h2>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="ProcessNewItems" type="checkbox" is="emby-checkbox" /><span>Neu hinzugefügte Einträge automatisch bearbeiten</span></label></div>
@@ -125,7 +125,7 @@
                     'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
                     'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes'];
                 var checks = ['StyleEnabled', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
-                    'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'WhisperTranslateToEnglish', 'ProcessNewItems'];
+                    'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems'];
                 var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes'];
                 var outcomeText = {
                     'ok': 'vorhanden', 'pending': 'noch nicht gesucht', 'none-found': 'nichts gefunden', 'no-safe-match': 'kein passender Treffer',

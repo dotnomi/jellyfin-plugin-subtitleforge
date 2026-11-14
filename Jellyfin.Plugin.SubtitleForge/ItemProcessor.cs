@@ -165,7 +165,8 @@ public sealed class ItemProcessor : IDisposable
     /// </summary>
     /// <param name="video">Video.</param>
     /// <param name="language">Target language.</param>
-    /// <param name="audioIndex">Jellyfin index of the audio stream, or null for automatic.</param>
+    /// <param name="audioIndex">Position of the audio track among the audio tracks (0 = first), or null for automatic.
+    /// Not Jellyfin's stream index: that shifts whenever external subtitle files are added.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Outcome.</returns>
     /// <param name="replaceDownload">Remove SubtitleForge's own downloaded subtitle for this language afterwards and never
@@ -175,7 +176,18 @@ public sealed class ItemProcessor : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var audio = audioIndex is null ? null : video.GetMediaStreams().FirstOrDefault(s => s.Type == MediaStreamType.Audio && s.Index == audioIndex);
+            var tracks = video.GetMediaStreams().Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal).OrderBy(s => s.Index).ToList();
+            MediaStream? audio = null;
+            if (audioIndex is { } position)
+            {
+                if (position < 0 || position >= tracks.Count)
+                {
+                    return new WhisperOutcome(false, $"Tonspur {position + 1} existiert nicht");
+                }
+
+                audio = tracks[position];
+            }
+
             var outcome = await _whisper.GenerateAsync(video, language, audio, null, cancellationToken).ConfigureAwait(false);
             _state.Set(video.Id, "whisper:" + language, outcome.Success ? "whisper" : "whisper-failed", outcome.Message);
             if (outcome.Success && replaceDownload)

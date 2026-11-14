@@ -22,6 +22,8 @@ public class WhisperSpikeTests
     [InlineData("small", "house_eng", "en", false)]
     [InlineData("small", "er_ger", "de", false)]
     [InlineData("small", "er_jpn", "ja", true)]
+    [InlineData("small", "er_ger", "de", true)]
+    [InlineData("small", "house_ger", "de", true)]
     public async Task Spike(string model, string clip, string lang, bool translate)
     {
         if (Dir is null)

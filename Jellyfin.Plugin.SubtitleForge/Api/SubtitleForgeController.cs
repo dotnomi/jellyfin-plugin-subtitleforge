@@ -84,8 +84,8 @@ public class SubtitleForgeController : ControllerBase
                 Name = Title(video),
                 LanguageSource = source,
                 Languages = langs,
-                AudioTracks = streams.Where(s => s.Type == MediaStreamType.Audio)
-                    .Select(s => new ReportAudio { Index = s.Index, Language = s.Language, Title = s.DisplayTitle }).ToList(),
+                AudioTracks = streams.Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal).OrderBy(s => s.Index)
+                    .Select((s, i) => new ReportAudio { Index = i, Language = s.Language, Title = s.DisplayTitle }).ToList(),
             });
         }
 
@@ -110,7 +110,7 @@ public class SubtitleForgeController : ControllerBase
     /// </summary>
     /// <param name="id">Item id.</param>
     /// <param name="language">Target language (ISO 639-1).</param>
-    /// <param name="audioIndex">Audio stream index, or empty for automatic choice.</param>
+    /// <param name="audioIndex">Position of the audio track (0 = first audio track), or empty for automatic choice.</param>
     /// <param name="replace">Replace SubtitleForge's own downloaded subtitle of that language (and never download it again).</param>
     /// <returns>Accepted.</returns>
     [HttpPost("Items/{id}/Whisper")]
@@ -202,7 +202,7 @@ public class SubtitleForgeController : ControllerBase
     /// <summary>An audio track.</summary>
     public sealed class ReportAudio
     {
-        /// <summary>Gets or sets the stream index.</summary>
+        /// <summary>Gets or sets the position among the audio tracks (0 = first).</summary>
         public int Index { get; set; }
 
         /// <summary>Gets or sets the language.</summary>

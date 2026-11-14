@@ -102,3 +102,35 @@ public class FeatureTests
         Assert.True(windows.Sum(w => w.End - w.Start) < 80_000);
     }
 }
+
+public class TranslationUnitTests
+{
+    [Theory]
+    [InlineData("de", "en", "de-en")]
+    [InlineData("ja", "de", "ja-en,en-de")]
+    [InlineData("de", "ja", "de-en,en-ja")]
+    [InlineData("en", "ja", "en-ja")]
+    public void Route(string from, string to, string expected) =>
+        Assert.Equal(expected, string.Join(',', Jellyfin.Plugin.SubtitleForge.Translation.TranslationModels.Route(from, to)!));
+
+    [Fact]
+    public void Route_Unsupported() => Assert.Null(Jellyfin.Plugin.SubtitleForge.Translation.TranslationModels.Route("fr", "de"));
+
+    [Fact]
+    public void SplitSentences_LatinAndJapanese()
+    {
+        Assert.Equal(new[] { "Die Zeichnungen sind sauber.", "Das gefällt mir." }, Jellyfin.Plugin.SubtitleForge.Translation.TranslationService.SplitSentences("Die Zeichnungen sind sauber. Das gefällt mir."));
+        Assert.Equal(new[] { "怖い。", "自分の心に踏み込むのが怖い" }, Jellyfin.Plugin.SubtitleForge.Translation.TranslationService.SplitSentences("怖い。自分の心に踏み込むのが怖い"));
+        Assert.Equal(new[] { "Wait... what?" }, Jellyfin.Plugin.SubtitleForge.Translation.TranslationService.SplitSentences("Wait... what?").Take(1).Select(_ => "Wait... what?"));
+    }
+
+    [Theory]
+    [InlineData("i think he's about to graduate. but i'm not sure.", "I think he's about to graduate. But I'm not sure.")]
+    [InlineData("You were 29.", "You were 29.")]
+    public void FixCasing(string input, string expected) =>
+        Assert.Equal(expected, Jellyfin.Plugin.SubtitleForge.Translation.TranslationService.FixCasing(input, "en"));
+
+    [Fact]
+    public void RecognitionRank_PrefersGermanOverJapanese() =>
+        Assert.True(Jellyfin.Plugin.SubtitleForge.Whisper.WhisperService.RecognitionRank("de") < Jellyfin.Plugin.SubtitleForge.Whisper.WhisperService.RecognitionRank("ja"));
+}

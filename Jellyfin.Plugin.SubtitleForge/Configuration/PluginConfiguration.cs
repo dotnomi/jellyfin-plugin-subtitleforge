@@ -156,10 +156,10 @@ public class PluginConfiguration : BasePluginConfiguration
     public int WhisperThreads { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether English subtitles may be produced by translating another audio language
-    /// (experimental: quality with small models is low).
+    /// Gets or sets a value indicating whether Whisper output may be translated offline into another language
+    /// (de↔en, ja↔en, ja↔de via English; models are downloaded on first use).
     /// </summary>
-    public bool WhisperTranslateToEnglish { get; set; }
+    public bool TranslationEnabled { get; set; } = true;
 
     /// <summary>
     /// Gets or sets a value indicating whether newly added movies/episodes are processed automatically.

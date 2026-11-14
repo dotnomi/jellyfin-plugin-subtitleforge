@@ -2,6 +2,7 @@ using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Providers;
 using Jellyfin.Plugin.SubtitleForge.Styling;
 using Jellyfin.Plugin.SubtitleForge.Sync;
+using Jellyfin.Plugin.SubtitleForge.Translation;
 using Jellyfin.Plugin.SubtitleForge.Whisper;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
@@ -30,6 +31,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<MediaBrowser.Controller.Subtitles.ISubtitleProvider, ForgeSubtitleProvider>();
         serviceCollection.AddSingleton<LanguageResolver>();
         serviceCollection.AddSingleton<WhisperModels>();
+        serviceCollection.AddSingleton<TranslationModels>();
+        serviceCollection.AddSingleton<TranslationService>();
         serviceCollection.AddSingleton<WhisperService>();
         serviceCollection.AddSingleton<ItemProcessor>();
         serviceCollection.AddSingleton<WorkQueue>();
