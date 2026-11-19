@@ -80,6 +80,16 @@ public static partial class Srt
     /// <returns>SRT content.</returns>
     public static string Write(IEnumerable<SubtitleCue> cues)
     {
+        var config = Plugin.Instance?.Configuration;
+        if (config is { SpokenTextOnly: true })
+        {
+            cues = SpokenTextFilter.Apply(cues.Select(c => c with { Text = NormalizeText(c.Text) }), config.RemoveLyrics);
+        }
+        else if (config is { RemoveLyrics: true })
+        {
+            cues = SpokenTextFilter.Apply(cues.Select(c => c with { Text = NormalizeText(c.Text) }), true);
+        }
+
         var sb = new StringBuilder();
         var n = 1;
         foreach (var cue in cues.OrderBy(c => c.StartMs))

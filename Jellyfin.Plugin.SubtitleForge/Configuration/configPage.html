@@ -65,6 +65,11 @@
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="BackgroundOpacity">Hintergrund-Deckkraft (0 bis 1, 0 = kein Kasten)</label><input id="BackgroundOpacity" type="number" step="0.05" min="0" max="1" is="emby-input" /></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="BottomOffsetPercent">Abstand vom unteren Rand (% der Bildhöhe)</label><input id="BottomOffsetPercent" type="number" step="0.5" min="0" max="50" is="emby-input" /></div>
 
+                    <h2 class="sectionTitle">Inhalt</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="SpokenTextOnly" type="checkbox" is="emby-checkbox" /><span>Nur gesprochenen Text zeigen</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Entfernt Geräusch- und Musikbeschreibungen wie [SCREAMING] oder (Schüsse) und Sprechernamen wie „JOHN:“ aus allen Untertiteln, die das Plugin schreibt (Downloads, OCR, Whisper). Eingebettete Spuren und fremde Dateien bleiben unverändert.</div></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="RemoveLyrics" type="checkbox" is="emby-checkbox" /><span>Auch Liedtexte (♪) entfernen</span></label></div>
+
                     <h2 class="sectionTitle">Sprachen</h2>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DownloadLanguages">Standard-Sprachen (z.B. de,en)</label><input id="DownloadLanguages" type="text" is="emby-input" />
                         <div class="fieldDescription">Gilt, wenn weder ein Tag <code>subs:…</code> an Film/Serie noch die Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ etwas festlegt.</div></div>
@@ -125,12 +130,12 @@
                 var fields = ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent',
                     'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
                     'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes'];
-                var checks = ['StyleEnabled', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
+                var checks = ['StyleEnabled', 'SpokenTextOnly', 'RemoveLyrics', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
                     'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems'];
                 var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes'];
                 var outcomeText = {
                     'ok': 'vorhanden', 'pending': 'noch nicht gesucht', 'none-found': 'nichts gefunden', 'no-safe-match': 'kein passender Treffer',
-                    'rejected-sync': 'verworfen: asynchron', 'download-failed': 'Download fehlgeschlagen', 'error': 'Fehler', 'saved': 'heruntergeladen'
+                    'rejected-sync': 'verworfen: asynchron', 'waiting-quota': 'wartet auf Tageslimit', 'download-failed': 'Download fehlgeschlagen', 'error': 'Fehler', 'saved': 'heruntergeladen'
                 };
                 var page = document.querySelector('#SubtitleForgeConfigPage');
                 var rows = [];

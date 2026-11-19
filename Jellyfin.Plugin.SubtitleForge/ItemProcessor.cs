@@ -50,6 +50,9 @@ public sealed class ItemProcessor : IDisposable
 {
     private const int MaxDownloadAttemptsPerLanguage = 3;
 
+    /// <summary>State: a fitting subtitle may exist but the source's daily limit was reached; retried next run.</summary>
+    public const string WaitingForQuota = "waiting-quota";
+
     private static readonly HashSet<string> PgsCodecs = new(StringComparer.OrdinalIgnoreCase) { "pgssub", "hdmv_pgs_subtitle", "pgs", "sup" };
     private static readonly HashSet<string> ImageCodecs = new(StringComparer.OrdinalIgnoreCase) { "pgssub", "hdmv_pgs_subtitle", "pgs", "sup", "dvdsub", "dvd_subtitle", "vobsub", "dvbsub", "dvb_subtitle", "xsub" };
 
@@ -246,9 +249,15 @@ public sealed class ItemProcessor : IDisposable
 
             var lang = string.IsNullOrWhiteSpace(s.Language) ? "und" : s.Language;
 
-            // Forced either by container flag, or (checked after OCR) by the PGS forced flags.
-            if (!SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, true, tag))
-                && !SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, false, tag)))
+            // Forced either by container flag, or (checked after OCR) by the PGS forced flags. A stream without the
+            // forced flag may have been saved as forced earlier – but only if no other stream of that language is a
+            // flagged forced stream (whose file would otherwise be mistaken for this one).
+            var ownStemExists = SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag));
+            var otherForcedStream = !s.IsForced && streams.Any(o => o != s && o.Type == MediaStreamType.Subtitle && !o.IsExternal
+                && o.IsForced && Lang.Same(o.Language, s.Language));
+            var savedAsForcedEarlier = !s.IsForced && !otherForcedStream
+                && SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, true, tag));
+            if (!ownStemExists && !savedAsForcedEarlier)
             {
                 jobs.Add((s, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag), s.IsForced));
             }
@@ -333,7 +342,8 @@ public sealed class ItemProcessor : IDisposable
             }
 
             var state = _state.Get(video.Id, statePrefix + lang);
-            if (!force && state is not null && state.LastTriedUtc > DateTime.UtcNow.AddDays(-Math.Max(1, config.DownloadRetryDays)))
+            if (!force && state is not null && state.Outcome != WaitingForQuota
+                && state.LastTriedUtc > DateTime.UtcNow.AddDays(-Math.Max(1, config.DownloadRetryDays)))
             {
                 continue;
             }
@@ -354,6 +364,16 @@ public sealed class ItemProcessor : IDisposable
         var missing = MissingLanguages(video, languages, config, force, string.Empty);
         if (missing.Count == 0)
         {
+            return 0;
+        }
+
+        if (_search.Sources.Where(s => s.IsConfigured).All(s => _search.Quota.IsPaused(s.Name)))
+        {
+            foreach (var l in missing)
+            {
+                _state.Set(video.Id, l, WaitingForQuota, "Tageslimit aller Quellen erreicht – nächster Versuch beim nächsten Lauf");
+            }
+
             return 0;
         }
 
@@ -401,6 +421,13 @@ public sealed class ItemProcessor : IDisposable
 
         // Full subtitles first; forced ones are only interesting if the file has none in this language.
         var full = candidates.Where(c => !c.Forced).ToList();
+        if (full.Count == 0 && _search.Sources.Any(s => s.IsConfigured && _search.Quota.IsPaused(s.Name)))
+        {
+            // A paused source was not even asked – keep the item open for the next run.
+            _state.Set(video.Id, lang, WaitingForQuota, "Nicht alle Quellen befragt (Tageslimit) – nächster Versuch beim nächsten Lauf");
+            return 0;
+        }
+
         if (full.Count == 0)
         {
             _state.Set(video.Id, lang, "none-found", candidates.Count > 0 ? $"nur {candidates.Count} Forced-Untertitel gefunden" : null);
@@ -420,9 +447,16 @@ public sealed class ItemProcessor : IDisposable
         }
 
         var rejected = new List<string>();
+        var quotaBlocked = false;
         var attempts = verify ? Math.Max(1, config.SyncMaxCandidates) : MaxDownloadAttemptsPerLanguage;
         foreach (var candidate in usable.Take(attempts))
         {
+            if (_search.Quota.IsPaused(candidate.Source))
+            {
+                quotaBlocked = true;
+                continue;
+            }
+
             try
             {
                 var (data, fileName) = await _search.GetSource(candidate.Source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
@@ -486,8 +520,17 @@ public sealed class ItemProcessor : IDisposable
             }
             catch (QuotaExceededException ex)
             {
-                _logger.LogWarning("SubtitleForge: {Message} (reset {Reset})", ex.Message, ex.ResetUtc);
+                _search.Quota.Pause(candidate.Source, ex.ResetUtc);
+                quotaBlocked = true;
+                _logger.LogWarning("SubtitleForge: {Message} – {Source} paused until {Until}", ex.Message, candidate.Source, _search.Quota.PausedUntil(candidate.Source));
             }
+        }
+
+        if (quotaBlocked)
+        {
+            // Not a failure: the item stays open and is retried on the next run (e.g. tomorrow night).
+            _state.Set(video.Id, lang, WaitingForQuota, "Tageslimit erreicht – wird beim nächsten Lauf fortgesetzt");
+            return 0;
         }
 
         _state.Set(

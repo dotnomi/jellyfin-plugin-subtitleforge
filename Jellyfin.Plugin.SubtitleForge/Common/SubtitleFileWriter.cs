@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -108,6 +109,65 @@ public class SubtitleFileWriter
             foreach (var path in CandidatePaths(video, BuildStem(video, language, false, tag)))
             {
                 if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                _libraryMonitor.ReportFileSystemChangeBeginning(path);
+                try
+                {
+                    File.Delete(path);
+                    deleted++;
+                    _logger.LogInformation("SubtitleForge: removed {Path}", path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("SubtitleForge: cannot delete {Path}: {Message}", path, ex.Message);
+                }
+                finally
+                {
+                    _libraryMonitor.ReportFileSystemChangeComplete(path, false);
+                }
+            }
+        }
+
+        if (deleted > 0)
+        {
+            _providerManager.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
+        }
+
+        return deleted;
+    }
+
+    /// <summary>
+    /// Deletes SubtitleForge's own subtitle files of a language whose tag matches, except one path to keep.
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <param name="language">Language code used in file names.</param>
+    /// <param name="tagMatches">Predicate on the file name tag (token before ".srt").</param>
+    /// <param name="keepPath">File to keep.</param>
+    /// <returns>Number of deleted files.</returns>
+    public int DeleteOwn(Video video, string language, Func<string, bool> tagMatches, string? keepPath)
+    {
+        var prefix = Path.GetFileNameWithoutExtension(video.Path) + "." + language + ".";
+        var deleted = 0;
+        foreach (var dir in new[] { video.ContainingFolderPath, video.GetInternalMetadataPath() }.Distinct())
+        {
+            if (!Directory.Exists(dir))
+            {
+                continue;
+            }
+
+            foreach (var path in Directory.EnumerateFiles(dir, "*.srt"))
+            {
+                var name = Path.GetFileName(path);
+                if (!name.StartsWith(prefix, StringComparison.Ordinal) || string.Equals(path, keepPath, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var tag = Path.GetFileNameWithoutExtension(name)[prefix.Length..];
+                if (tag.StartsWith("forced.", StringComparison.Ordinal) || !tagMatches(tag))
                 {
                     continue;
                 }

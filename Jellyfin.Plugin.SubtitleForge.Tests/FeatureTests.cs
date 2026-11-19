@@ -143,3 +143,54 @@ public class TranslationUnitTests
     public void RecognitionRank_PrefersGermanOverJapanese() =>
         Assert.True(Jellyfin.Plugin.SubtitleForge.Whisper.WhisperService.RecognitionRank("de") < Jellyfin.Plugin.SubtitleForge.Whisper.WhisperService.RecognitionRank("ja"));
 }
+
+public class QuotaGuardTests
+{
+    [Fact]
+    public void Pause_UntilResetOrMidnight()
+    {
+        var guard = new Jellyfin.Plugin.SubtitleForge.Providers.QuotaGuard();
+        Assert.False(guard.IsPaused("OpenSubtitles"));
+        guard.Pause("OpenSubtitles", DateTime.UtcNow.AddHours(3));
+        Assert.True(guard.IsPaused("opensubtitles"));
+        guard.Pause("SubDL", null);
+        Assert.Equal(DateTime.UtcNow.Date.AddDays(1), guard.PausedUntil("SubDL"));
+        guard.Pause("Old", DateTime.UtcNow.AddHours(-1)); // reset in the past → next midnight
+        Assert.True(guard.IsPaused("Old"));
+    }
+}
+
+public class SpokenTextFilterTests
+{
+    [Theory]
+    [InlineData("[SCREAMING]", "")]
+    [InlineData("(ruhige Musik mit kindlichem Gesang)", "")]
+    [InlineData("(Frau im TV) Nein danke, dafür setze\nich mich in einen Fotoautomaten.", "Nein danke, dafür setze\nich mich in einen Fotoautomaten.")]
+    [InlineData("(Gelächter)\nRose wartet draußen mit dem Hund.", "Rose wartet draußen mit dem Hund.")]
+    [InlineData("JOHN: Get down!\n[GUN SHOTS]", "Get down!")]
+    [InlineData("- MAN: Who's there?\n- WOMAN 2: Me.", "- Who's there?\n- Me.")]
+    [InlineData("- [gasps]\n- What was that?", "What was that?")]
+    [InlineData("<i>(whispering) I know.</i>", "<i>I know.</i>")]
+    [InlineData("ES IST SO WEIT. CHECK DEINEN SPIND.", "ES IST SO WEIT. CHECK DEINEN SPIND.")]
+    [InlineData("Dr. House: Not now.", "Dr. House: Not now.")]
+    [InlineData("【爆発音】逃げろ！", "逃げろ！")]
+    [InlineData("(ruhige Musik\nmit kindlichem Gesang läuft weiter)", "")]
+    [InlineData("(Musik und Gesang\nklingen verzerrt aus)", "")]
+    [InlineData("(Lied: \"I Want to See", "")]
+    [InlineData("von Richard & Linda Thompson)", "")]
+    public void Filter(string input, string expected) => Assert.Equal(expected, SpokenTextFilter.FilterText(input, false));
+
+    [Fact]
+    public void Lyrics_KeptByDefault_RemovedOnRequest()
+    {
+        Assert.Equal("♪ Hikari no naka ♪", SpokenTextFilter.FilterText("♪ Hikari no naka ♪", false));
+        Assert.Equal(string.Empty, SpokenTextFilter.FilterText("♪ Hikari no naka ♪", true));
+    }
+
+    [Fact]
+    public void EmptyCuesAreDropped()
+    {
+        var cues = SpokenTextFilter.Apply(new[] { new SubtitleCue(0, 1000, "[music]"), new SubtitleCue(1000, 2000, "Hi.") }, false);
+        Assert.Single(cues);
+    }
+}

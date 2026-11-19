@@ -24,6 +24,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<SubtitleFileWriter>();
         serviceCollection.AddSingleton<SubDlSource>();
         serviceCollection.AddSingleton<OpenSubtitlesSource>();
+        serviceCollection.AddSingleton<QuotaGuard>();
         serviceCollection.AddSingleton<SubtitleSearchService>();
         serviceCollection.AddSingleton<DownloadStateStore>();
         serviceCollection.AddSingleton<SpeechAnalyzer>();

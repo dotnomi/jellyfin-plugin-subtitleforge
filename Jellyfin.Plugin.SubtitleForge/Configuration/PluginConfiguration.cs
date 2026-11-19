@@ -79,6 +79,17 @@ public class PluginConfiguration : BasePluginConfiguration
     public int OcrThreads { get; set; } = 2;
 
     /// <summary>
+    /// Gets or sets a value indicating whether written subtitles contain only spoken text
+    /// (no "[SCREAMING]", "(Schüsse)", speaker labels).
+    /// </summary>
+    public bool SpokenTextOnly { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether song lyrics (lines with ♪) are removed as well.
+    /// </summary>
+    public bool RemoveLyrics { get; set; }
+
+    /// <summary>
     /// Gets or sets the comma separated languages to download (ISO 639-1, e.g. "de,en").
     /// </summary>
     public string DownloadLanguages { get; set; } = "de,en";

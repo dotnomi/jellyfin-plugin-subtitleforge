@@ -17,6 +17,7 @@ namespace Jellyfin.Plugin.SubtitleForge.Providers;
 public class SubtitleSearchService
 {
     private readonly IReadOnlyList<ISubtitleSource> _sources;
+    private readonly QuotaGuard _quota;
     private readonly ILogger<SubtitleSearchService> _logger;
 
     /// <summary>
@@ -24,9 +25,11 @@ public class SubtitleSearchService
     /// </summary>
     /// <param name="subDl">SubDL.</param>
     /// <param name="openSubtitles">OpenSubtitles.</param>
+    /// <param name="quota">Quota guard.</param>
     /// <param name="logger">Logger.</param>
-    public SubtitleSearchService(SubDlSource subDl, OpenSubtitlesSource openSubtitles, ILogger<SubtitleSearchService> logger)
+    public SubtitleSearchService(SubDlSource subDl, OpenSubtitlesSource openSubtitles, QuotaGuard quota, ILogger<SubtitleSearchService> logger)
     {
+        _quota = quota;
         _sources = new ISubtitleSource[] { openSubtitles, subDl };
         OpenSubtitles = openSubtitles;
         _logger = logger;
@@ -37,6 +40,9 @@ public class SubtitleSearchService
 
     /// <summary>Gets all sources.</summary>
     public IReadOnlyList<ISubtitleSource> Sources => _sources;
+
+    /// <summary>Gets the quota guard.</summary>
+    public QuotaGuard Quota => _quota;
 
     /// <summary>
     /// Builds a query for a video item.
@@ -94,7 +100,7 @@ public class SubtitleSearchService
     public async Task<List<SubtitleCandidate>> SearchAsync(SubtitleQuery query, CancellationToken cancellationToken)
     {
         var all = new List<SubtitleCandidate>();
-        foreach (var source in _sources.Where(s => s.IsConfigured))
+        foreach (var source in _sources.Where(s => s.IsConfigured && !_quota.IsPaused(s.Name)))
         {
             try
             {
@@ -104,7 +110,8 @@ public class SubtitleSearchService
             }
             catch (QuotaExceededException ex)
             {
-                _logger.LogWarning("SubtitleForge: {Source}: {Message}", source.Name, ex.Message);
+                _quota.Pause(source.Name, ex.ResetUtc);
+                _logger.LogWarning("SubtitleForge: {Source}: {Message} – paused until {Until}", source.Name, ex.Message, _quota.PausedUntil(source.Name));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

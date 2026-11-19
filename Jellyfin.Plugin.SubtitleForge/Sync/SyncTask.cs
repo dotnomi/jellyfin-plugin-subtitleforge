@@ -85,9 +85,10 @@ public class SyncTask : IScheduledTask
                 }
 
                 var stem = Path.GetFileNameWithoutExtension(s.Path);
-                if (stem.EndsWith("." + OcrTask.FileTag, StringComparison.OrdinalIgnoreCase))
+                if (stem.EndsWith("." + OcrTask.FileTag, StringComparison.OrdinalIgnoreCase)
+                    || Whisper.WhisperService.IsWhisperTag(stem[(stem.LastIndexOf('.') + 1)..]))
                 {
-                    continue; // OCR of embedded subtitles: timing is already exact
+                    continue; // OCR of embedded subtitles / Whisper output: timing comes from the file itself
                 }
 
                 var own = OwnTags.Any(t => stem.EndsWith("." + t, StringComparison.OrdinalIgnoreCase));
