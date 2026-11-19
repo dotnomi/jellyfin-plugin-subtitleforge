@@ -1,7 +1,7 @@
 ---
 name: "SubtitleForge"
 guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
-version: "0.2.0.0"
+version: "0.2.1.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Einheitliches Untertitel-Styling, OCR für Bild-Untertitel, Auto-Download und Audio-Sync"
@@ -34,6 +34,10 @@ artifacts:
 - "runtimes/linux-arm64/libggml-base-whisper.so"
 - "runtimes/linux-arm64/libggml-cpu-whisper.so"
 - "runtimes/linux-arm64/libgomp.so.1"
+- "whisperhost/linux-x64/sf-whisper"
+- "whisperhost/linux-arm64/sf-whisper"
 changelog: >
+  0.2.1: Jellyfin 12.x, Bibliotheksauswahl, Whisper läuft in eigenem Prozess (GPU-Absturz beendet Jellyfin nicht mehr,
+  automatische Wiederholung auf der CPU).
   0.2: Sprachen pro Serie/Bibliothek (Tag subs:..), Forced-Erkennung, Whisper (CPU),
   automatische Bearbeitung neuer Einträge, Übersicht mit manuellen Aktionen.

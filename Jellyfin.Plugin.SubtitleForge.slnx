@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="Jellyfin.Plugin.SubtitleForge/Jellyfin.Plugin.SubtitleForge.csproj" />
   <Project Path="Jellyfin.Plugin.SubtitleForge.Tests/Jellyfin.Plugin.SubtitleForge.Tests.csproj" />
+  <Project Path="Jellyfin.Plugin.SubtitleForge.WhisperHost/Jellyfin.Plugin.SubtitleForge.WhisperHost.csproj" />
 </Solution>

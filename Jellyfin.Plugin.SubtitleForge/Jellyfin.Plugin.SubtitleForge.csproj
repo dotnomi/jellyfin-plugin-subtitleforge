@@ -69,4 +69,10 @@
     <RemoveDir Directories="$(PublishDir)runtimes/win-x64;$(PublishDir)runtimes/win-arm64;$(PublishDir)runtimes/win-x86;$(PublishDir)runtimes/osx-arm64;$(PublishDir)runtimes/osx-x64;$(PublishDir)runtimes/macos-arm64;$(PublishDir)runtimes/macos-x64;$(PublishDir)runtimes/linux-arm;$(PublishDir)runtimes/android;$(PublishDir)runtimes/ios" />
   </Target>
 
+  <!-- Whisper runs in a separate helper process (crash isolation); publish it next to the plugin. -->
+  <Target Name="PublishWhisperHost" AfterTargets="Publish" Condition="'$(SkipWhisperHost)' != 'true'">
+    <Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)/../Jellyfin.Plugin.SubtitleForge.WhisperHost/Jellyfin.Plugin.SubtitleForge.WhisperHost.csproj&quot; -c $(Configuration) -r linux-x64 -o &quot;$(PublishDir)whisperhost/linux-x64&quot; -nologo -v q" />
+    <Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)/../Jellyfin.Plugin.SubtitleForge.WhisperHost/Jellyfin.Plugin.SubtitleForge.WhisperHost.csproj&quot; -c $(Configuration) -r linux-arm64 -o &quot;$(PublishDir)whisperhost/linux-arm64&quot; -nologo -v q" />
+  </Target>
+
 </Project>

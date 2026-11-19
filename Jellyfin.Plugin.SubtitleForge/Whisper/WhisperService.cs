@@ -62,6 +62,7 @@ public sealed class WhisperService : IDisposable
         _writer = writer;
         _appPaths = appPaths;
         _logger = logger;
+        WhisperEngine.Diagnostics = m => logger.LogWarning("SubtitleForge: {Message}", m);
     }
 
     /// <inheritdoc />

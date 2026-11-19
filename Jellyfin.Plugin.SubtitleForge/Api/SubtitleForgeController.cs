@@ -137,7 +137,8 @@ public class SubtitleForgeController : ControllerBase
     public ActionResult<object> Hardware()
     {
         var check = Jellyfin.Plugin.SubtitleForge.Whisper.GpuDetector.Check();
-        return Ok(new { gpu = check.Description, gpuUsable = check.Usable, runtime = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.LoadedRuntime });
+        var engine = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.GpuBroken;
+        return Ok(new { gpu = engine ? Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.GpuStatus : check.Description, gpuUsable = check.Usable && !engine, runtime = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.LoadedRuntime });
     }
 
     /// <summary>

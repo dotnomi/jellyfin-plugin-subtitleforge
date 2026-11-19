@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Separate helper process for Whisper: a crash of whisper.cpp or of the GPU driver must not take down Jellyfin.
+       Published self-contained as a single file without .dll files (Jellyfin loads every *.dll in the plugin folder);
+       it uses the native libraries shipped in the plugin's runtimes folder. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AssemblyName>sf-whisper</AssemblyName>
+    <RootNamespace>Jellyfin.Plugin.SubtitleForge.WhisperHost</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CA1849;CA2007;CA1303;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.8.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Jellyfin.Plugin.SubtitleForge/Whisper/WhisperCore.cs" Link="WhisperCore.cs" />
+  </ItemGroup>
+
+</Project>

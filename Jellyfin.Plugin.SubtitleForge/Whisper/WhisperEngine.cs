@@ -1,45 +1,77 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Sync;
-using global::Whisper.net;
-using global::Whisper.net.LibraryLoader;
 
 namespace Jellyfin.Plugin.SubtitleForge.Whisper;
 
 /// <summary>
-/// A raw transcription segment.
-/// </summary>
-/// <param name="StartMs">Start.</param>
-/// <param name="EndMs">End.</param>
-/// <param name="Text">Text.</param>
-public sealed record WhisperSegment(long StartMs, long EndMs, string Text);
-
-/// <summary>
-/// Runs whisper.cpp (CPU) over the speech regions of an audio track.
+/// Runs whisper.cpp over the speech regions of an audio track. Normally in a separate helper process
+/// (SubtitleForge.WhisperHost): a crash of the GPU driver or of whisper.cpp then only fails this job instead of
+/// taking down Jellyfin, and the job is retried on the CPU.
 /// </summary>
 public static class WhisperEngine
 {
     /// <summary>Max length of one processing window (whisper works in 30 s windows).</summary>
-    public const int MaxChunkMs = 28_000;
+    public const int MaxChunkMs = WhisperCore.MaxChunkMs;
+
+    /// <summary>Gives up on a helper that has not reported anything for this long (hung driver).</summary>
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(10);
 
     private static int _configured;
+    private static string? _helperRuntime;
+    private static bool _gpuBroken;
+
+    /// <summary>Gets or sets a sink for diagnostic messages (set by the plugin to its logger).</summary>
+    public static Action<string>? Diagnostics { get; set; }
 
     /// <summary>
-    /// Gets the runtime whisper.cpp actually runs on ("Vulkan" = GPU, "Cpu"), once loaded.
+    /// Gets the runtime whisper.cpp ran on last ("Vulkan" = GPU, "Cpu").
     /// </summary>
-    public static string LoadedRuntime => RuntimeOptions.LoadedLibrary?.ToString() ?? "noch nicht geladen";
+    public static string LoadedRuntime => _helperRuntime ?? WhisperCore.LoadedRuntime ?? "noch nicht geladen";
+
+    /// <summary>Gets a value indicating whether Whisper crashed on the GPU in this Jellyfin session.</summary>
+    public static bool GpuBroken => _gpuBroken;
 
     /// <summary>Gets the result of the GPU check (why Vulkan is or is not used).</summary>
     public static string GpuStatus { get; private set; } = "noch nicht geprüft";
 
+    private static string PluginDirectory =>
+        Path.GetDirectoryName(typeof(WhisperEngine).Assembly.Location) ?? AppContext.BaseDirectory;
+
     /// <summary>
-    /// Points Whisper.net at the native libraries inside the plugin folder (plugins are not covered by the host's probing).
+    /// Decides whether the GPU (Vulkan) should be tried.
+    /// </summary>
+    /// <returns>True for GPU.</returns>
+    public static bool WantGpu()
+    {
+        var useGpu = Environment.GetEnvironmentVariable("SF_WHISPER_GPU") is { } env
+            ? env == "1"
+            : Plugin.Instance?.Configuration.WhisperUseGpu ?? true;
+        if (!useGpu)
+        {
+            GpuStatus = "GPU-Beschleunigung ausgeschaltet";
+            return false;
+        }
+
+        if (_gpuBroken)
+        {
+            return false;
+        }
+
+        var gpu = GpuDetector.Check();
+        GpuStatus = gpu.Description;
+        return gpu.Usable;
+    }
+
+    /// <summary>
+    /// Configures the in-process native library (fallback when the helper is not available).
     /// </summary>
     public static void EnsureNativeLibrary()
     {
@@ -48,32 +80,53 @@ public static class WhisperEngine
             return;
         }
 
-        // Whisper.net looks for "<dir of LibraryPath>/runtimes/<rid>/libwhisper.so".
-        var assembly = typeof(WhisperEngine).Assembly.Location;
-        RuntimeOptions.LibraryPath = assembly;
+        WhisperCore.ConfigureNative(typeof(WhisperEngine).Assembly.Location, WantGpu());
+    }
 
-        // whisper.cpp needs libgomp.so.1 (OpenMP). Use the system's copy, else the one shipped with the plugin.
-        if (!NativeLibrary.TryLoad("libgomp.so.1", out _))
+    /// <summary>
+    /// Path of the helper executable for this platform, or null if it is not shipped.
+    /// </summary>
+    /// <returns>Path or null.</returns>
+    public static string? HelperPath()
+    {
+        if (Environment.GetEnvironmentVariable("SF_WHISPER_INPROC") == "1" || !OperatingSystem.IsLinux())
         {
-            var dir = Path.GetDirectoryName(assembly) ?? AppContext.BaseDirectory;
-            var rid = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
-            var bundled = Path.Combine(dir, "runtimes", rid, "libgomp.so.1");
-            if (File.Exists(bundled))
-            {
-                NativeLibrary.Load(bundled);
-            }
+            return null;
         }
 
-        // Vulkan first (AMD, Intel, NVIDIA GPUs); whisper.net falls back to the CPU runtime automatically when no
-        // Vulkan driver/GPU is present. Decided once per process (native libraries cannot be unloaded).
-        var useGpu = Environment.GetEnvironmentVariable("SF_WHISPER_GPU") is { } env
-            ? env == "1"
-            : Plugin.Instance?.Configuration.WhisperUseGpu ?? true;
-        var gpu = GpuDetector.Check();
-        GpuStatus = useGpu ? gpu.Description : "GPU-Beschleunigung ausgeschaltet";
-        RuntimeOptions.RuntimeLibraryOrder = useGpu && gpu.Usable
-            ? new List<RuntimeLibrary> { RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx }
-            : new List<RuntimeLibrary> { RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx };
+        var rid = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "linux-x64",
+            Architecture.Arm64 => "linux-arm64",
+            _ => null,
+        };
+        if (rid is null)
+        {
+            return null;
+        }
+
+        var path = Path.Combine(PluginDirectory, "whisperhost", rid, "sf-whisper");
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        // Zip extraction does not always keep the executable bit.
+        try
+        {
+            var mode = File.GetUnixFileMode(path);
+            if (!mode.HasFlag(UnixFileMode.UserExecute))
+            {
+                File.SetUnixFileMode(path, mode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Diagnostics?.Invoke("Whisper-Helfer nicht ausführbar: " + ex.Message);
+            return null;
+        }
+
+        return path;
     }
 
     /// <summary>
@@ -152,54 +205,204 @@ public static class WhisperEngine
         IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
-        EnsureNativeLibrary();
-        using var factory = WhisperFactory.FromPath(modelPath);
-        var builder = factory.CreateBuilder()
-            .WithLanguage(language)
-            .WithThreads(Math.Max(1, threads))
-            .WithNoContext()                 // no carry-over between windows: prevents repetition loops
-            .WithTemperature(0f)
-            .WithNoSpeechThreshold(0.6f);
-        if (translateToEnglish)
+        var helper = HelperPath();
+        if (helper is null)
         {
-            builder = builder.WithTranslate();
+            EnsureNativeLibrary();
+            var result = new List<WhisperSegment>();
+            await WhisperCore.TranscribeAsync(modelPath, pcmPath, windows, language, translateToEnglish, threads, result.Add, progress, cancellationToken).ConfigureAwait(false);
+            return result;
         }
 
-        await using var processor = builder.Build();
+        var gpu = WantGpu();
+        try
+        {
+            return await RunHelperAsync(helper, modelPath, pcmPath, windows, language, translateToEnglish, threads, gpu, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (WhisperHelperException ex) when (gpu && !cancellationToken.IsCancellationRequested)
+        {
+            // GPU driver/whisper.cpp crashed on the GPU: Jellyfin keeps running; use the CPU from now on.
+            _gpuBroken = true;
+            GpuStatus = "GPU-Fehler bei Whisper (" + ex.Message + ") – bis zum nächsten Jellyfin-Neustart wird die CPU genutzt";
+            Diagnostics?.Invoke("Whisper auf der GPU abgebrochen, wiederhole auf der CPU: " + ex.Message);
+            progress?.Report(0);
+            return await RunHelperAsync(helper, modelPath, pcmPath, windows, language, translateToEnglish, threads, false, progress, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<List<WhisperSegment>> RunHelperAsync(
+        string helper,
+        string modelPath,
+        string pcmPath,
+        IReadOnlyList<(long Start, long End)> windows,
+        string language,
+        bool translateToEnglish,
+        int threads,
+        bool gpu,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        var windowFile = pcmPath + ".windows";
+        await File.WriteAllLinesAsync(
+            windowFile,
+            windows.Select(w => string.Create(CultureInfo.InvariantCulture, $"{w.Start} {w.End}")),
+            cancellationToken).ConfigureAwait(false);
+
+        var psi = new ProcessStartInfo(helper)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var a in new[]
+        {
+            "--lib", typeof(WhisperEngine).Assembly.Location,
+            "--model", modelPath,
+            "--pcm", pcmPath,
+            "--windows", windowFile,
+            "--lang", language,
+            "--threads", threads.ToString(CultureInfo.InvariantCulture),
+            "--gpu", gpu ? "1" : "0",
+            "--translate", translateToEnglish ? "1" : "0",
+        })
+        {
+            psi.ArgumentList.Add(a);
+        }
+
         var result = new List<WhisperSegment>();
-        await using var pcm = File.OpenRead(pcmPath);
-        var buffer = new byte[MaxChunkMs * 32];
-        for (var i = 0; i < windows.Count; i++)
+        var stderr = new Queue<string>();
+        var lastActivity = DateTime.UtcNow;
+        using var process = new Process { StartInfo = psi };
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var (start, end) = windows[i];
-            var offset = start * 32; // 16 kHz * 2 bytes per ms
-            var length = (int)Math.Min(buffer.Length, (end - start) * 32);
-            if (offset >= pcm.Length)
-            {
-                break;
-            }
-
-            pcm.Seek(offset, SeekOrigin.Begin);
-            var read = await pcm.ReadAsync(buffer.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
-            var samples = new float[read / 2];
-            for (var k = 0; k < samples.Length; k++)
-            {
-                samples[k] = (short)(buffer[2 * k] | (buffer[(2 * k) + 1] << 8)) / 32768f;
-            }
-
-            await foreach (var seg in processor.ProcessAsync(samples, cancellationToken).ConfigureAwait(false))
-            {
-                var text = seg.Text.Trim();
-                if (text.Length > 0)
+            process.Start();
+            var errTask = Task.Run(
+                async () =>
                 {
-                    result.Add(new WhisperSegment(start + (long)seg.Start.TotalMilliseconds, start + (long)seg.End.TotalMilliseconds, text));
+                    while (await process.StandardError.ReadLineAsync(CancellationToken.None).ConfigureAwait(false) is { } line)
+                    {
+                        lock (stderr)
+                        {
+                            stderr.Enqueue(line);
+                            if (stderr.Count > 20)
+                            {
+                                stderr.Dequeue();
+                            }
+                        }
+                    }
+                },
+                CancellationToken.None);
+
+            using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var watchdog = Task.Run(
+                async () =>
+                {
+                    while (!stall.IsCancellationRequested)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(15), stall.Token).ConfigureAwait(false);
+                        if (DateTime.UtcNow - lastActivity > StallTimeout)
+                        {
+                            Kill(process);
+                            return;
+                        }
+                    }
+                },
+                CancellationToken.None);
+
+            using (cancellationToken.Register(() => Kill(process)))
+            {
+                while (await process.StandardOutput.ReadLineAsync(CancellationToken.None).ConfigureAwait(false) is { } line)
+                {
+                    lastActivity = DateTime.UtcNow;
+                    if (line.StartsWith("S ", StringComparison.Ordinal))
+                    {
+                        var p = line.Split(' ', 4);
+                        result.Add(new WhisperSegment(
+                            long.Parse(p[1], CultureInfo.InvariantCulture),
+                            long.Parse(p[2], CultureInfo.InvariantCulture),
+                            Uri.UnescapeDataString(p[3])));
+                    }
+                    else if (line.StartsWith("P ", StringComparison.Ordinal))
+                    {
+                        progress?.Report(double.Parse(line[2..], CultureInfo.InvariantCulture));
+                    }
+                    else if (line.StartsWith("R ", StringComparison.Ordinal))
+                    {
+                        _helperRuntime = line[2..];
+                    }
                 }
+
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             }
 
-            progress?.Report((i + 1.0) / windows.Count);
-        }
+            await stall.CancelAsync().ConfigureAwait(false);
+            await errTask.ConfigureAwait(false);
+            try
+            {
+                await watchdog.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
 
-        return result;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (process.ExitCode != 0)
+            {
+                string tail;
+                lock (stderr)
+                {
+                    // Skip .NET stack frames; keep messages like "what(): vk::Device::waitForFences: ErrorDeviceLost".
+                    tail = string.Join(" | ", stderr.Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("at ", StringComparison.Ordinal)).TakeLast(2));
+                }
+
+                var reason = DateTime.UtcNow - lastActivity > StallTimeout
+                    ? "keine Rückmeldung mehr"
+                    : $"Exitcode {process.ExitCode}";
+                throw new WhisperHelperException(tail.Length > 0 ? $"{reason}: {tail}" : reason);
+            }
+
+            return result;
+        }
+        finally
+        {
+            Kill(process);
+            try
+            {
+                File.Delete(windowFile);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    private static void Kill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+        }
+    }
+}
+
+/// <summary>
+/// The Whisper helper process failed (crash, driver error, hang).
+/// </summary>
+public sealed class WhisperHelperException : Exception
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WhisperHelperException"/> class.
+    /// </summary>
+    /// <param name="message">Message.</param>
+    public WhisperHelperException(string message)
+        : base(message)
+    {
     }
 }
