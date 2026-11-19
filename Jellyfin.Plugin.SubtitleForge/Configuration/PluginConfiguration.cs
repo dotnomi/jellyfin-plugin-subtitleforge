@@ -188,4 +188,11 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the delay in minutes after a new item was added before it is processed (lets the library scan finish).
     /// </summary>
     public int NewItemDelayMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// Gets or sets the ids of the libraries the plugin works on (empty = all libraries).
+    /// </summary>
+#pragma warning disable CA1819 // XML-serialised configuration
+    public string[] Libraries { get; set; } = System.Array.Empty<string>();
+#pragma warning restore CA1819
 }

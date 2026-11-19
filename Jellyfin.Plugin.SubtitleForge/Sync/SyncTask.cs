@@ -67,12 +67,7 @@ public class SyncTask : IScheduledTask
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-        var items = _libraryManager.GetItemList(new InternalItemsQuery
-        {
-            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode },
-            IsVirtualItem = false,
-            Recursive = true,
-        }).OfType<Video>().ToList();
+        var items = LibraryItems.AllVideos(_libraryManager);
 
         var work = new List<(Video Video, string Path, bool Own)>();
         foreach (var video in items)

@@ -70,6 +70,10 @@
                         <div class="fieldDescription checkboxFieldDescription">Entfernt Geräusch- und Musikbeschreibungen wie [SCREAMING] oder (Schüsse) und Sprechernamen wie „JOHN:“ aus allen Untertiteln, die das Plugin schreibt (Downloads, OCR, Whisper). Eingebettete Spuren und fremde Dateien bleiben unverändert.</div></div>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="RemoveLyrics" type="checkbox" is="emby-checkbox" /><span>Auch Liedtexte (♪) entfernen</span></label></div>
 
+                    <h2 class="sectionTitle">Bibliotheken</h2>
+                    <div id="sfLibraries"></div>
+                    <div class="fieldDescription">Das Plugin bearbeitet nur Filme und Folgen in den angehakten Bibliotheken. Nichts angehakt = alle Bibliotheken.</div>
+
                     <h2 class="sectionTitle">Sprachen</h2>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DownloadLanguages">Standard-Sprachen (z.B. de,en)</label><input id="DownloadLanguages" type="text" is="emby-input" />
                         <div class="fieldDescription">Gilt, wenn weder ein Tag <code>subs:…</code> an Film/Serie noch die Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ etwas festlegt.</div></div>
@@ -247,6 +251,22 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         fields.forEach(function (f) { page.querySelector('#' + f).value = config[f]; });
                         checks.forEach(function (f) { page.querySelector('#' + f).checked = !!config[f]; });
+                        var selected = (config.Libraries || []).map(function (x) { return x.replace(/-/g, '').toLowerCase(); });
+                        ApiClient.getVirtualFolders().then(function (folders) {
+                            var box = page.querySelector('#sfLibraries');
+                            box.innerHTML = '';
+                            folders.filter(function (f) { return ['movies', 'tvshows', 'mixed', undefined, null, ''].indexOf(f.CollectionType) >= 0; }).forEach(function (f) {
+                                var id = (f.ItemId || '').replace(/-/g, '').toLowerCase();
+                                var div = document.createElement('div');
+                                div.className = 'checkboxContainer';
+                                div.innerHTML = '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="sfLib" /><span></span></label>';
+                                var cb = div.querySelector('input');
+                                cb.setAttribute('data-id', id);
+                                cb.checked = selected.indexOf(id) >= 0;
+                                div.querySelector('span').textContent = f.Name;
+                                box.appendChild(div);
+                            });
+                        });
                         Dashboard.hideLoadingMsg();
                     });
                     loadReport();
@@ -266,6 +286,7 @@
                             config[f] = numbers.indexOf(f) >= 0 ? Number(v) : v;
                         });
                         checks.forEach(function (f) { config[f] = page.querySelector('#' + f).checked; });
+                        config.Libraries = Array.prototype.map.call(page.querySelectorAll('.sfLib:checked'), function (cb) { return cb.getAttribute('data-id'); });
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });

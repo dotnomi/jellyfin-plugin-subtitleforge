@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
@@ -120,7 +121,8 @@ public sealed class WorkQueue : IHostedService, IDisposable
     private void OnItemAdded(object? sender, ItemChangeEventArgs e)
     {
         var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-        if (!config.ProcessNewItems || e.Item is not (Movie or Episode) || e.Item.IsVirtualItem)
+        if (!config.ProcessNewItems || e.Item is not (Movie or Episode) || e.Item.IsVirtualItem
+            || !LibraryItems.IsEnabled(_libraryManager, e.Item))
         {
             return;
         }
