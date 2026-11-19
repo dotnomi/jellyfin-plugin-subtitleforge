@@ -1,6 +1,6 @@
 # SubtitleForge – Jellyfin-Plugin für Untertitel
 
-Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen Dienste wie Sonarr, Radarr oder Bazarr und läuft rein auf der CPU, also auch auf NAS-Geräten (z.B. Intel N100).
+Eigenständiges Plugin für Jellyfin 12.x (.NET 10). Es braucht keine externen Dienste wie Sonarr, Radarr oder Bazarr und läuft auf der CPU (also auch auf NAS-Geräten wie dem Intel N100), Whisper optional auf der GPU per Vulkan.
 
 ## Funktionen
 
