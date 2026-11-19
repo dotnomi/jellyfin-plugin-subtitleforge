@@ -129,6 +129,18 @@ public class SubtitleForgeController : ControllerBase
     }
 
     /// <summary>
+    /// Hardware status for Whisper (GPU detection and the runtime in use).
+    /// </summary>
+    /// <returns>Status.</returns>
+    [HttpGet("Hardware")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<object> Hardware()
+    {
+        var check = Jellyfin.Plugin.SubtitleForge.Whisper.GpuDetector.Check();
+        return Ok(new { gpu = check.Description, gpuUsable = check.Usable, runtime = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.LoadedRuntime });
+    }
+
+    /// <summary>
     /// Queue status.
     /// </summary>
     /// <returns>Status.</returns>

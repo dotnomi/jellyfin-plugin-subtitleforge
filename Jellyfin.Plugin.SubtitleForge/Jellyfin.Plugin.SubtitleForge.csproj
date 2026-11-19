@@ -37,6 +37,8 @@
   <ItemGroup>
     <!-- OpenMP runtime needed by whisper.cpp; not present in the official Jellyfin image (GCC Runtime Library Exception). -->
     <None Include="Whisper/native/linux-x64/libgomp.so.1" Link="runtimes/linux-x64/libgomp.so.1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- whisper.cpp with Vulkan (GPU: AMD/Intel/NVIDIA), built by tools/build-whisper-vulkan.sh; loaded before the CPU runtime. -->
+    <None Include="Whisper/native/vulkan/linux-x64/*.so" Link="runtimes/vulkan/linux-x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="Whisper/native/linux-arm64/libgomp.so.1" Link="runtimes/linux-arm64/libgomp.so.1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
@@ -59,12 +61,12 @@
   <!-- Jellyfin loads every *.dll inside the plugin folder, so only ship the Linux natives (.so). -->
   <Target Name="StripNonLinuxRuntimes" AfterTargets="Publish">
     <ItemGroup>
-      <_NonLinuxRuntime Include="$(PublishDir)runtimes/**/*" Exclude="$(PublishDir)runtimes/linux-x64/**/*;$(PublishDir)runtimes/linux-arm64/**/*" />
+      <_NonLinuxRuntime Include="$(PublishDir)runtimes/**/*" Exclude="$(PublishDir)runtimes/linux-x64/**/*;$(PublishDir)runtimes/linux-arm64/**/*;$(PublishDir)runtimes/vulkan/linux-x64/**/*" />
     </ItemGroup>
     <Delete Files="@(_NonLinuxRuntime)" />
     <!-- Framework assemblies pulled in by Whisper.net: Jellyfin's runtime already provides them; a second copy can clash. -->
     <Delete Files="$(PublishDir)System.Text.Json.dll;$(PublishDir)System.IO.Pipelines.dll;$(PublishDir)System.Text.Encodings.Web.dll" />
-    <RemoveDir Directories="$(PublishDir)runtimes/win-x64;$(PublishDir)runtimes/win-arm64;$(PublishDir)runtimes/osx-arm64;$(PublishDir)runtimes/osx-x64;$(PublishDir)runtimes/android;$(PublishDir)runtimes/ios" />
+    <RemoveDir Directories="$(PublishDir)runtimes/win-x64;$(PublishDir)runtimes/win-arm64;$(PublishDir)runtimes/win-x86;$(PublishDir)runtimes/osx-arm64;$(PublishDir)runtimes/osx-x64;$(PublishDir)runtimes/macos-arm64;$(PublishDir)runtimes/macos-x64;$(PublishDir)runtimes/linux-arm;$(PublishDir)runtimes/android;$(PublishDir)runtimes/ios" />
   </Target>
 
 </Project>

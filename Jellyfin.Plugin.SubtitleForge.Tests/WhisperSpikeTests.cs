@@ -50,6 +50,7 @@ public class WhisperSpikeTests
         var segments = await WhisperEngine.TranscribeAsync(modelPath, pcm, windows, lang, translate, 4, null, CancellationToken.None);
         sw.Stop();
         var cues = WhisperPostProcessor.ToCues(segments, speech);
+        _out.WriteLine($"runtime: {WhisperEngine.LoadedRuntime} ({WhisperEngine.GpuStatus})");
         _out.WriteLine($"{model}/{clip} ({lang}{(translate ? "→en" : string.Empty)}): {audioMin:F1} min audio, {windows.Count} windows " +
             $"({windows.Sum(w => w.End - w.Start) / 60000.0:F1} min), {sw.Elapsed.TotalSeconds:F0}s → {sw.Elapsed.TotalSeconds / 60 / audioMin:F2}× realtime, " +
             $"{segments.Count} segments → {cues.Count} cues");

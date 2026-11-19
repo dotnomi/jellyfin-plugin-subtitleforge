@@ -13,6 +13,7 @@ Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen D
 | **Nur gesprochener Text** | Entfernt Geräusch-/Musikbeschreibungen ([SCREAMING], (Schüsse), auch über zwei Zeilen) und Sprechernamen („JOHN:“) aus allen Untertiteln, die das Plugin schreibt; Liedtexte (♪) optional. |
 | **Ganze Bibliothek über Tage** | Ist das Tageslimit einer Quelle (z.B. 20 OpenSubtitles-Downloads) erreicht, pausiert das Plugin nur diese Quelle bis zum Reset; betroffene Einträge bleiben offen und werden in der nächsten Nacht fortgesetzt, bis die Bibliothek durch ist. |
 | **Forced-Erkennung** | Forced-Untertitel (nur Schilder/Fremdsprache) werden am Release-Namen und an der geringen Abdeckung der Dialoge erkannt und als `.forced` gespeichert, nie als voller Untertitel. |
+| **GPU-Beschleunigung (Vulkan)** | Whisper rechnet auf AMD-, Intel- (z.B. Arc A310, N100-iGPU) und NVIDIA-GPUs, sobald eine GPU unter `/dev/dri` sichtbar ist und `libvulkan1` + `mesa-vulkan-drivers` installiert sind; sonst automatisch CPU. Mesas Software-Vulkan (llvmpipe) wird bewusst nie verwendet. Status auf der Einstellungsseite. |
 | **Spracherkennung (Whisper)** | Ergebnis heißt in Jellyfin „[AI] Whisper“ (bzw. „[AI] Whisper ja-de“ bei Übersetzung), damit maschinell erzeugter Text erkennbar ist. Erzeugt Untertitel aus einer Tonspur (CPU, whisper.cpp): manuell pro Film/Folge mit frei wählbarer Tonspur und Zielsprache. Automatisch als letzter Ausweg nur für Serien/Filme mit dem Tag `whisper:auto` (oder global eingeschaltet; `whisper:off` schließt aus). Optional ersetzt das Ergebnis einen heruntergeladenen Untertitel, der dann nie wieder geladen wird. |
 | **Offline-Übersetzung** | Weicht die Tonspur-Sprache von der Zielsprache ab, wird transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Ohne passende Tonspur nimmt das Plugin automatisch die am besten erkannte (z.B. deutschen Dub vor Japanisch). Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen. |
 | **Neue Einträge sofort** | Neu hinzugefügte Filme und Folgen werden automatisch bearbeitet, sobald der Bibliotheks-Scan ruhig ist. |
@@ -26,6 +27,12 @@ Eigenständiges Plugin für Jellyfin 10.11 (.NET 9). Es braucht keine externen D
 | Bild-Untertitel in Text umwandeln (OCR) | täglich 03:00 |
 | Fehlende Untertitel herunterladen (Whisper-Fallback nur, wenn aktiviert) | täglich 04:00 |
 | Untertitel-Synchronität prüfen und korrigieren | nur manuell |
+
+## GPU-Beschleunigung einrichten
+
+- Native Installation (Debian/Ubuntu): `sudo apt install libvulkan1 mesa-vulkan-drivers`; der Jellyfin-Benutzer braucht Zugriff auf `/dev/dri` (Gruppen `render`/`video`, wie für Hardware-Transcoding). Danach Jellyfin neu starten.
+- Docker: das offizielle Image enthält kein Vulkan. `/dev/dri` durchreichen und die beiden Pakete im Image nachinstallieren (eigenes Dockerfile).
+- Die Vulkan-Variante von whisper.cpp baut `tools/build-whisper-vulkan.sh` (gleicher Stand wie Whisper.net 1.8.1).
 
 ## Bauen
 

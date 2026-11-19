@@ -111,6 +111,8 @@
                             <option value="medium">medium – 540 MB, genauer, ca. 3× langsamer</option>
                             <option value="large-v3-turbo">large-v3-turbo – 570 MB, sehr genau, nur Transkription</option>
                         </select></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="WhisperUseGpu" type="checkbox" is="emby-checkbox" /><span>GPU nutzen (Vulkan: AMD, Intel, NVIDIA)</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Ohne passende GPU oder ohne Vulkan-Treiber wird automatisch die CPU genutzt. Voraussetzung auf dem Server: Pakete <code>libvulkan1</code> und <code>mesa-vulkan-drivers</code> (AMD/Intel), Zugriff von Jellyfin auf <code>/dev/dri</code> (wie für Hardware-Transcoding). Änderung wirkt nach Neustart von Jellyfin. <span id="sfHardware"></span></div></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WhisperThreads">CPU-Threads (0 = automatisch)</label><input id="WhisperThreads" type="number" step="1" min="0" max="32" is="emby-input" /></div>
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="TranslationEnabled" type="checkbox" is="emby-checkbox" /><span>In andere Sprachen übersetzen (offline)</span></label>
                         <div class="fieldDescription checkboxFieldDescription">Gibt es keine Tonspur in der gewünschten Sprache, wird die am besten erkannte Tonspur transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Modelle (~110–150 MB je Richtung) werden beim ersten Einsatz geladen. Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen.</div></div>
@@ -130,7 +132,7 @@
                 var fields = ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent',
                     'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
                     'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes'];
-                var checks = ['StyleEnabled', 'SpokenTextOnly', 'RemoveLyrics', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
+                var checks = ['StyleEnabled', 'WhisperUseGpu', 'SpokenTextOnly', 'RemoveLyrics', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
                     'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems'];
                 var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes'];
                 var outcomeText = {
@@ -250,6 +252,9 @@
                     loadReport();
                     refreshQueue();
                     queueTimer = setInterval(refreshQueue, 10000);
+                    api('GET', 'SubtitleForge/Hardware').then(function (h) {
+                        page.querySelector('#sfHardware').textContent = 'Status: ' + h.gpu + (h.runtime === 'Vulkan' ? ' – Whisper läuft auf der GPU.' : (h.runtime === 'Cpu' ? ' – Whisper läuft auf der CPU.' : ''));
+                    }, function () { });
                 });
                 page.addEventListener('pagehide', function () { if (queueTimer) { clearInterval(queueTimer); } });
 

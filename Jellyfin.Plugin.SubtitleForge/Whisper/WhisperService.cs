@@ -206,7 +206,7 @@ public sealed class WhisperService : IDisposable
             var legacy = translate ? "Whisper-" + sourceLanguage : "Whisper";
             _writer.DeleteOwn(video, Lang.ToThreeLetter(language), tag => string.Equals(tag, legacy, StringComparison.Ordinal), path);
             var message = FormattableString.Invariant(
-                $"Whisper {model.Key}: {cues.Count} Untertitel aus Tonspur {sourceLanguage}{(translate ? $", übersetzt nach {language}" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min");
+                $"Whisper {model.Key}: {cues.Count} Untertitel aus Tonspur {sourceLanguage}{(translate ? $", übersetzt nach {language}" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min auf {(WhisperEngine.LoadedRuntime == "Vulkan" ? "GPU" : "CPU")}");
             _logger.LogInformation("SubtitleForge: {Message} → {Path}", message, path);
             return new WhisperOutcome(true, message, path);
         }

@@ -194,3 +194,24 @@ public class SpokenTextFilterTests
         Assert.Single(cues);
     }
 }
+
+
+public class GpuDetectorTests
+{
+    [Fact]
+    public void RenderNodes_ReadsVendorFromSysfs()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sf-drm-" + Guid.NewGuid().ToString("N"));
+        foreach (var (node, vendor) in new[] { ("renderD128", "0x10de"), ("renderD129", "0x1002"), ("renderD130", "0x1234") })
+        {
+            Directory.CreateDirectory(Path.Combine(root, node, "device"));
+            File.WriteAllText(Path.Combine(root, node, "device", "vendor"), vendor + "\n");
+        }
+
+        // /dev/dri/<node> must exist too; on machines without those nodes the list is simply empty.
+        var nodes = Jellyfin.Plugin.SubtitleForge.Whisper.GpuDetector.RenderNodes(root);
+        Assert.DoesNotContain(nodes, n => n.Vendor == "0x1234");
+        Assert.All(nodes, n => Assert.Contains(n.Vendor, new[] { "AMD", "Intel", "NVIDIA" }));
+        Directory.Delete(root, true);
+    }
+}

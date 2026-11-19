@@ -31,6 +31,14 @@ public static class WhisperEngine
     private static int _configured;
 
     /// <summary>
+    /// Gets the runtime whisper.cpp actually runs on ("Vulkan" = GPU, "Cpu"), once loaded.
+    /// </summary>
+    public static string LoadedRuntime => RuntimeOptions.LoadedLibrary?.ToString() ?? "noch nicht geladen";
+
+    /// <summary>Gets the result of the GPU check (why Vulkan is or is not used).</summary>
+    public static string GpuStatus { get; private set; } = "noch nicht geprüft";
+
+    /// <summary>
     /// Points Whisper.net at the native libraries inside the plugin folder (plugins are not covered by the host's probing).
     /// </summary>
     public static void EnsureNativeLibrary()
@@ -56,7 +64,16 @@ public static class WhisperEngine
             }
         }
 
-        RuntimeOptions.RuntimeLibraryOrder = new List<RuntimeLibrary> { RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx };
+        // Vulkan first (AMD, Intel, NVIDIA GPUs); whisper.net falls back to the CPU runtime automatically when no
+        // Vulkan driver/GPU is present. Decided once per process (native libraries cannot be unloaded).
+        var useGpu = Environment.GetEnvironmentVariable("SF_WHISPER_GPU") is { } env
+            ? env == "1"
+            : Plugin.Instance?.Configuration.WhisperUseGpu ?? true;
+        var gpu = GpuDetector.Check();
+        GpuStatus = useGpu ? gpu.Description : "GPU-Beschleunigung ausgeschaltet";
+        RuntimeOptions.RuntimeLibraryOrder = useGpu && gpu.Usable
+            ? new List<RuntimeLibrary> { RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx }
+            : new List<RuntimeLibrary> { RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx };
     }
 
     /// <summary>

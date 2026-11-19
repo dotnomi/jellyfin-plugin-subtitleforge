@@ -163,6 +163,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public string WhisperModel { get; set; } = "small";
 
     /// <summary>
+    /// Gets or sets a value indicating whether Whisper may use the GPU via Vulkan (AMD, Intel, NVIDIA) with automatic CPU
+    /// fallback. Takes effect after a Jellyfin restart.
+    /// </summary>
+    public bool WhisperUseGpu { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the CPU threads for Whisper (0 = automatic: all cores but one, max. 8).
     /// </summary>
     public int WhisperThreads { get; set; }
