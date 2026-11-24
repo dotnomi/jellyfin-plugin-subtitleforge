@@ -1,48 +1,7 @@
 [
   {
     "guid": "f1e66da5-7fed-45f1-a6b8-79c253708fc8",
-    "versions": [
-      {
-        "version": "0.5.2.0",
-        "changelog": "0.5.2: Saved style applies to the next playback without reloading the web client. Choose which subtitle to translate. Fixes from a full review: a slow or failing source no longer aborts the nightly run or blocks the title for a week (retried next run); Whisper/OCR errors fail only that title; unreadable image tracks are not OCR'd every night; manual jobs no longer wait behind automatic ones outside the time window; the sync task never writes back a file that changed meanwhile; \"doesn't fit\" on forced subtitles and on read-only folders; Romanian, Greek, Slovak and other languages with two ISO codes are recognised; Cyrillic/Central European/Japanese legacy encodings; ntfy titles with umlauts; shifted copies of other files keep their forced flag and do not overwrite each other; junk timestamps can no longer make the audio check use gigabytes of memory; test notification no longer takes real entries. 0.5.1: Subtitle background is one box around all lines (no darker overlap between lines), style number fields are limited to their range (an outline of 340 px no longer breaks the preview), font weight offers only normal and bold (the two weights subtitle fonts actually have). 0.5: Subtitle tools in the player (other match, sync check, shift timing earlier/later) and in every file list, recycle bin for deleted and rejected subtitles, filter for titles missing one language, sources ranked by what fitted before, optional weekly report, settings export/import (without secrets), subtitle polish (repairs broken umlauts/encoding, optional line wrapping and minimum display time), dictionary-based OCR correction. 0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's \"⋮\" menu and for multi-select, delete single subtitles the plugin made, every plugin subtitle is marked \"[SF]\" (older files are renamed once), live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan. Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.",
-        "targetAbi": "12.0.0.0",
-        "sourceUrl": "https://github.com/dotnomi/jellyfin-plugin-subtitleforge/releases/download/v0.5.2.0/subtitleforge_0.5.2.0.zip",
-        "checksum": "49e79c7dcf3f39c30a5b9ed7fb7bc960",
-        "timestamp": "2026-11-24T21:25:13Z"
-      },
-      {
-        "version": "0.5.1.0",
-        "changelog": "0.5.1: Subtitle background is one box around all lines (no darker overlap between lines), style number fields are limited to their range (an outline of 340 px no longer breaks the preview), font weight offers only normal and bold (the two weights subtitle fonts actually have). 0.5: Subtitle tools in the player (other match, sync check, shift timing earlier/later) and in every file list, recycle bin for deleted and rejected subtitles, filter for titles missing one language, sources ranked by what fitted before, optional weekly report, settings export/import (without secrets), subtitle polish (repairs broken umlauts/encoding, optional line wrapping and minimum display time), dictionary-based OCR correction. 0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's \"⋮\" menu and for multi-select, delete single subtitles the plugin made, every plugin subtitle is marked \"[SF]\" (older files are renamed once), live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan. Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.",
-        "targetAbi": "12.0.0.0",
-        "sourceUrl": "https://github.com/dotnomi/jellyfin-plugin-subtitleforge/releases/download/v0.5.1.0/subtitleforge_0.5.1.0.zip",
-        "checksum": "f95cc033a5d7f4565bdd935a2bc9f119",
-        "timestamp": "2026-11-24T20:50:32Z"
-      },
-      {
-        "version": "0.5.0.0",
-        "changelog": "0.5: Subtitle tools in the player (other match, sync check, shift timing earlier/later) and in every file list, recycle bin for deleted and rejected subtitles, filter for titles missing one language, sources ranked by what fitted before, optional weekly report, settings export/import (without secrets), subtitle polish (repairs broken umlauts/encoding, optional line wrapping and minimum display time), dictionary-based OCR correction. 0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's \"⋮\" menu and for multi-select, delete single subtitles the plugin made, every plugin subtitle is marked \"[SF]\" (older files are renamed once), live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan. Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.",
-        "targetAbi": "12.0.0.0",
-        "sourceUrl": "https://github.com/dotnomi/jellyfin-plugin-subtitleforge/releases/download/v0.5.0.0/subtitleforge_0.5.0.0.zip",
-        "checksum": "5e02c7b7d44cbc7833a89c47186a713b",
-        "timestamp": "2026-11-24T20:33:33Z"
-      },
-      {
-        "version": "0.4.0.0",
-        "changelog": "0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's \"⋮\" menu and for multi-select, delete single subtitles the plugin made, every plugin subtitle is marked \"[SF]\" (older files are renamed once), live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan. Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.",
-        "targetAbi": "12.0.0.0",
-        "sourceUrl": "https://github.com/dotnomi/jellyfin-plugin-subtitleforge/releases/download/v0.4.0.0/subtitleforge_0.4.0.0.zip",
-        "checksum": "d8db7c97e5d4e37227b94f2bf627015c",
-        "timestamp": "2026-11-24T19:37:08Z"
-      },
-      {
-        "version": "0.3.0.0",
-        "changelog": "0.3: Untertitel-Button auf der Seite von Film/Folge/Staffel/Serie, ganze Staffeln/Serien auf einmal, Vorschau mit \"passt nicht\", Statistik, Sync-Bericht für die ganze Bibliothek, Pause während der Wiedergabe, Zeitfenster, Zusammenfassung im Aktivitätsprotokoll/Webhook, Whisper als letzter Ausweg nach X Tagen, GPU-Selbsttest, ASS→SRT, Forced-Untertitel für Synchronfassungen, Quelle Jimaku, Forced-Erkennung bei mehreren OCR-Spuren.",
-        "targetAbi": "12.0.0.0",
-        "sourceUrl": "https://github.com/dotnomi/jellyfin-plugin-subtitleforge/releases/download/v0.3.0.0/subtitleforge_0.3.0.0.zip",
-        "checksum": "ac2fefe1ed1cf388dd920da1bc3b1d58",
-        "timestamp": "2026-11-24T15:20:23Z"
-      }
-    ],
+    "versions": [],
     "name": "SubtitleForge",
     "overview": "Uniform subtitle style, OCR for image subtitles, verified downloads, sync fixing, offline translation, Whisper",
     "description": "One subtitle style for the whole server, OCR for Blu-ray and DVD image subtitles, downloads (SubDL, OpenSubtitles, Jimaku) checked against the audio, sync fixing, offline translation and Whisper speech recognition (CPU or GPU via Vulkan). English and German interface.",
