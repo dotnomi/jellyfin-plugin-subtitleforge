@@ -59,7 +59,7 @@
             #SubtitleForgeConfigPage .sf-pv-track { flex: 1; height: .9cqh; margin-top: 2.3cqh; background: rgba(255,255,255,.3); border-radius: 1cqh; overflow: hidden; }
             #SubtitleForgeConfigPage .sf-pv-track > div { width: 38%; height: 100%; background: #00a4dc; }
             #SubtitleForgeConfigPage .sf-pv-subs { position: absolute; left: 4%; right: 4%; bottom: 0; text-align: center; }
-            #SubtitleForgeConfigPage .sf-pv-subs span { -webkit-box-decoration-break: clone; box-decoration-break: clone; line-height: 1.25; }
+            #SubtitleForgeConfigPage .sf-pv-subs span { display: inline-block; line-height: 1.25; }
             #SubtitleForgeConfigPage .sf-pv-tools { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; margin-bottom: 1.2em; }
         </style>
         <div data-role="content">
@@ -163,7 +163,7 @@
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="FontSizeVh" data-t="fontSize">Font size (% of the picture height)</label><input id="FontSizeVh" type="number" step="0.1" min="1" max="15" is="emby-input" /></div>
                     <div class="selectContainer"><label class="selectLabel" for="FontWeight" data-t="fontWeight">Font weight</label>
                         <select is="emby-select" id="FontWeight" class="emby-select-withcolor emby-select">
-                            <option value="400" data-t="fwNormal">Normal</option><option value="500" data-t="fwMedium">Medium</option><option value="600" data-t="fwSemi">Semi-bold</option><option value="700" data-t="fwBold">Bold</option>
+                            <option value="400" data-t="fwNormal">Normal</option><option value="700" data-t="fwBold">Bold</option>
                         </select></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="TextColor" data-t="textColor">Text colour</label><input id="TextColor" type="color" /></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OutlineColor" data-t="outlineColor">Outline colour</label><input id="OutlineColor" type="color" /></div>
@@ -316,7 +316,7 @@
                     hStyle: 'Untertitel-Stil', styleHelp: 'Gilt für Jellyfin Web und Desktop (vom Server erzwungen). Android TV und die Handy-Apps nutzen ihre eigenen Einstellungen – stelle dort einmal die Werte unten ein.',
                     pvLabel: 'Vorschau:', pvDark: 'dunkle Szene', pvBright: 'helle Szene', pvOther: 'anderer Text',
                     styleEnabled: 'Stil im Web-Client erzwingen', fontFamily: 'Schriftart (CSS font-family)', fontSize: 'Schriftgröße (% der Bildhöhe)', fontWeight: 'Schriftstärke',
-                    fwNormal: 'Normal', fwMedium: 'Medium', fwSemi: 'Halbfett', fwBold: 'Fett',
+                    fwNormal: 'Normal', fwBold: 'Fett',
                     textColor: 'Textfarbe', outlineColor: 'Randfarbe', outlineWidth: 'Randstärke (px, 0 = kein Rand)', dropShadow: 'Weicher Schatten',
                     bgColor: 'Hintergrundfarbe', bgOpacity: 'Hintergrund-Deckkraft (0 bis 1, 0 = kein Kasten)', bottomOffset: 'Abstand vom unteren Rand (% der Bildhöhe)',
                     hContent: 'Inhalt', spokenOnly: 'Nur gesprochenen Text zeigen',
@@ -502,13 +502,23 @@
                     var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
                     return m ? 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
                 }
+                // Number field value limited to its min/max (typing 340 into "outline width" must not reach the preview or the config).
+                function num(id, fallback) {
+                    var input = page.querySelector('#' + id);
+                    var n = Number(input.value);
+                    if (input.value === '' || !isFinite(n)) { return fallback; }
+                    var min = input.getAttribute('min'), max = input.getAttribute('max');
+                    if (min !== null && n < Number(min)) { n = Number(min); }
+                    if (max !== null && n > Number(max)) { n = Number(max); }
+                    return n;
+                }
                 function updatePreview() {
                     var v = function (id) { return page.querySelector('#' + id).value; };
                     var box = page.querySelector('#sfPreview');
                     var h = box.getBoundingClientRect().height || 300;
                     // Outline/shadow are given in screen pixels for a full-screen player; scale them to the preview.
                     var scale = h / Math.max(600, window.screen ? window.screen.height : 1080);
-                    var w = (Number(v('OutlineWidthPx')) || 0) * scale;
+                    var w = num('OutlineWidthPx', 0) * scale;
                     var shadow = [];
                     if (w > 0) {
                         for (var i = 0; i < 16; i++) {
@@ -519,24 +529,30 @@
                     if (page.querySelector('#DropShadow').checked) {
                         shadow.push('0 0 ' + Math.max(4 * scale, w * 3) + 'px rgba(0,0,0,0.9)');
                     }
-                    var alpha = Math.max(0, Math.min(1, Number(v('BackgroundOpacity')) || 0));
+                    var alpha = Math.max(0, Math.min(1, num('BackgroundOpacity', 0)));
                     var span = page.querySelector('#sfPvText');
                     span.textContent = t(sampleIndex % 2 ? 'sample2' : 'sample1');
                     span.innerHTML = span.innerHTML.replace(/\n/g, '<br>');
                     span.style.fontFamily = v('FontFamily');
-                    span.style.fontSize = (Number(v('FontSizeVh')) || 4) * h / 100 + 'px';
+                    span.style.fontSize = num('FontSizeVh', 4) * h / 100 + 'px';
                     span.style.fontWeight = v('FontWeight');
                     span.style.color = v('TextColor');
                     span.style.textShadow = shadow.length ? shadow.join(', ') : 'none';
                     span.style.backgroundColor = alpha > 0 ? hexToRgba(v('BackgroundColor'), alpha) : 'transparent';
                     span.style.padding = alpha > 0 ? '0.1em 0.4em' : '0';
                     span.style.borderRadius = alpha > 0 ? '0.2em' : '0';
-                    page.querySelector('#sfPvSubs').style.bottom = (Number(v('BottomOffsetPercent')) || 0) + '%';
+                    page.querySelector('#sfPvSubs').style.bottom = num('BottomOffsetPercent', 0) + '%';
                 }
                 ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'DropShadow', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent'].forEach(function (id) {
                     var n = page.querySelector('#' + id);
                     n.addEventListener('input', updatePreview);
                     n.addEventListener('change', updatePreview);
+                });
+                numbers.forEach(function (id) {
+                    var n = page.querySelector('#' + id);
+                    n.addEventListener('change', function () {
+                        if (n.value !== '' && Number(n.value) !== num(id, 0)) { n.value = num(id, 0); updatePreview(); }
+                    });
                 });
                 page.querySelector('#sfPvDark').addEventListener('click', function () { page.querySelector('#sfScene').className = 'sf-scene dark'; });
                 page.querySelector('#sfPvBright').addEventListener('click', function () { page.querySelector('#sfScene').className = 'sf-scene bright'; });
@@ -988,6 +1004,8 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         fields.forEach(function (f) { page.querySelector('#' + f).value = config[f] === undefined || config[f] === null ? '' : config[f]; });
                         if (!page.querySelector('#UiLanguage').value) { page.querySelector('#UiLanguage').value = 'auto'; }
+                        // Common subtitle fonts only exist in normal and bold; older values (500, 600) map to the one shown.
+                        page.querySelector('#FontWeight').value = Number(config.FontWeight) >= 550 ? '700' : '400';
                         checks.forEach(function (f) { page.querySelector('#' + f).checked = !!config[f]; });
                         updatePreview();
                         var chosen = (config.Libraries || []).map(function (x) { return x.replace(/-/g, '').toLowerCase(); });
@@ -1023,7 +1041,7 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         fields.forEach(function (f) {
                             var v = page.querySelector('#' + f).value;
-                            config[f] = numbers.indexOf(f) >= 0 ? Number(v) : v;
+                            config[f] = numbers.indexOf(f) >= 0 ? num(f, Number(config[f]) || 0) : v;
                         });
                         checks.forEach(function (f) { config[f] = page.querySelector('#' + f).checked; });
                         config.Libraries = Array.prototype.map.call(page.querySelectorAll('.sfLib:checked'), function (cb) { return cb.getAttribute('data-id'); });

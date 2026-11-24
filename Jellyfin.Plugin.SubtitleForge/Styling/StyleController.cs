@@ -46,7 +46,8 @@ public class StyleController : ControllerBase
             enabled = config.StyleEnabled,
             fontFamily = SafeFont(config.FontFamily),
             fontSizeVh = Finite(config.FontSizeVh, 4.5, 1, 15),
-            fontWeight = Math.Clamp(config.FontWeight, 100, 900),
+            // Browsers render the usual subtitle fonts only as normal or bold: send what will be shown.
+            fontWeight = config.FontWeight >= 550 ? 700 : 400,
             textColor = SafeColor(config.TextColor, "#ffffff"),
             outlineColor = SafeColor(config.OutlineColor, "#000000"),
             outlineWidthPx = Finite(config.OutlineWidthPx, 2, 0, 8),

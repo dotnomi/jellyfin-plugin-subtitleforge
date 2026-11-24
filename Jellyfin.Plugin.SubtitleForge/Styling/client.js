@@ -53,8 +53,8 @@
         '.videoSubtitles{padding-bottom:' + s.bottomOffsetPercent + 'vh!important;}' +
         '.videoSubtitlesInner,.videoSecondarySubtitlesInner{' + text.join(';') + ';' +
         'margin-top:0!important;margin-bottom:0!important;' +
-        (bgAlpha > 0 ? 'padding:0.1em 0.4em!important;border-radius:0.2em!important;' : '') +
-        '-webkit-box-decoration-break:clone;box-decoration-break:clone;}' +
+        // One box around all lines: per-line boxes overlap where the lines meet and the overlap shows darker.
+        (bgAlpha > 0 ? 'display:inline-block!important;padding:0.1em 0.4em!important;border-radius:0.2em!important;' : '') + '}' +
         'video.htmlvideoplayer::cue{' + text.join(';') + ';}';
 
     // Chromium/WebKit ignore cue.line for these tracks, but allow moving the whole native cue container.
@@ -62,6 +62,12 @@
     if (isWebkit) {
         css += 'video.htmlvideoplayer::-webkit-media-text-track-container{transform:translateY(-' +
             s.bottomOffsetPercent + 'vh)!important;}';
+        if (bgAlpha > 0) {
+            // Native cues: one box per cue (the display element) instead of one per line.
+            css += 'video.htmlvideoplayer::cue{background-color:transparent!important;}' +
+                'video.htmlvideoplayer::-webkit-media-text-track-display{background-color:' + bg + '!important;' +
+                'padding:0.1em 0.4em!important;border-radius:0.2em!important;box-sizing:border-box;}';
+        }
     }
 
     var style = document.createElement('style');

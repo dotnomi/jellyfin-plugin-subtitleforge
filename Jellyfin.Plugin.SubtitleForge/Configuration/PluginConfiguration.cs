@@ -25,7 +25,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets the CSS font weight (400 = normal, 700 = bold).
     /// </summary>
-    public int FontWeight { get; set; } = 600;
+    public int FontWeight { get; set; } = 700;
 
     /// <summary>
     /// Gets or sets the text color (#rrggbb).
