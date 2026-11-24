@@ -26,6 +26,15 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<SubtitleFileWriter>();
         serviceCollection.AddSingleton<SubDlSource>();
         serviceCollection.AddSingleton<OpenSubtitlesSource>();
+
+        // OpenSubtitles requests carry the API key in a custom header, which .NET would keep on a redirect to another
+        // host: this client does not follow redirects at all.
+        serviceCollection.AddHttpClient(nameof(OpenSubtitlesSource))
+            .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+            });
         serviceCollection.AddSingleton<JimakuSource>();
         serviceCollection.AddSingleton<QuotaGuard>();
         serviceCollection.AddSingleton<SubtitleSearchService>();
@@ -42,6 +51,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ItemProcessor>();
         serviceCollection.AddSingleton<Whisper.GpuSelfTest>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<Whisper.GpuSelfTest>());
+        serviceCollection.AddSingleton<BrandMigration>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<BrandMigration>());
         serviceCollection.AddSingleton<WorkQueue>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<WorkQueue>());
     }

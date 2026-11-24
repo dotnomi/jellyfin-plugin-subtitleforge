@@ -55,13 +55,13 @@ public class SyncTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Untertitel-Synchronität prüfen und korrigieren";
+    public string Name => Loc.T("Check and fix subtitle sync", "Untertitel-Synchronität prüfen und korrigieren");
 
     /// <inheritdoc />
     public string Key => "SubtitleForgeSync";
 
     /// <inheritdoc />
-    public string Description => "Gleicht vorhandene externe SRT-Untertitel mit der Tonspur ab und korrigiert Versatz, Framerate und Schnittunterschiede.";
+    public string Description => Loc.T("Matches existing external SRT subtitles against the audio track and fixes offset, frame rate and cut differences.", "Gleicht vorhandene externe SRT-Untertitel mit der Tonspur ab und korrigiert Versatz, Framerate und Schnittunterschiede.");
 
     /// <inheritdoc />
     public string Category => "SubtitleForge";
@@ -86,13 +86,13 @@ public class SyncTask : IScheduledTask
                 }
 
                 var stem = Path.GetFileNameWithoutExtension(s.Path);
-                if (stem.EndsWith("." + OcrTask.FileTag, StringComparison.OrdinalIgnoreCase)
-                    || Whisper.WhisperService.IsWhisperTag(stem[(stem.LastIndexOf('.') + 1)..]))
+                var tag = SubtitleFileWriter.TagOf(stem);
+                if (string.Equals(tag, OcrTask.FileTag, StringComparison.OrdinalIgnoreCase) || Whisper.WhisperService.IsWhisperTag(tag))
                 {
                     continue; // OCR of embedded subtitles / Whisper output: timing comes from the file itself
                 }
 
-                var own = OwnTags.Any(t => stem.EndsWith("." + t, StringComparison.OrdinalIgnoreCase));
+                var own = OwnTags.Any(t => string.Equals(tag, t, StringComparison.OrdinalIgnoreCase));
                 if (!own && !config.SyncFixForeignSubtitles)
                 {
                     continue;
@@ -141,7 +141,9 @@ public class SyncTask : IScheduledTask
         _logger.LogInformation("SubtitleForge sync: {Fixed} corrected, {Ok} already in sync, {Unsure} not verifiable", fixedCount, okCount, unsure);
         if (fixedCount + unsure > 0)
         {
-            await _notifier.FlushAsync("Sync", FormattableString.Invariant($"{fixedCount} korrigiert, {okCount} passten schon, {unsure} nicht prüfbar"), cancellationToken).ConfigureAwait(false);
+            await _notifier.FlushAsync("Sync", Loc.German
+                    ? FormattableString.Invariant($"{fixedCount} korrigiert, {okCount} passten schon, {unsure} nicht prüfbar")
+                    : FormattableString.Invariant($"{fixedCount} fixed, {okCount} already in sync, {unsure} could not be checked"), cancellationToken).ConfigureAwait(false);
         }
         progress.Report(100);
     }

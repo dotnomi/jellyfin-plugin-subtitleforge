@@ -76,7 +76,9 @@ public class Notifier
             return;
         }
 
-        var title = $"SubtitleForge {run}: {count} neue Untertitel";
+        var title = Loc.German
+            ? FormattableString.Invariant($"SubtitleForge {run}: {count} neue Untertitel")
+            : FormattableString.Invariant($"SubtitleForge {run}: {count} new subtitles");
         var body = new StringBuilder();
         if (!string.IsNullOrEmpty(extra))
         {
@@ -90,7 +92,9 @@ public class Notifier
 
         if (count > lines.Count)
         {
-            body.AppendLine(FormattableString.Invariant($"… und {count - lines.Count} weitere"));
+            body.AppendLine(Loc.German
+                ? FormattableString.Invariant($"… und {count - lines.Count} weitere")
+                : FormattableString.Invariant($"… and {count - lines.Count} more"));
         }
 
         var config = Config;
@@ -124,7 +128,7 @@ public class Notifier
     /// <returns>Task.</returns>
     public Task TestAsync(CancellationToken cancellationToken)
     {
-        Record("Testnachricht – die Benachrichtigung funktioniert.");
+        Record(Loc.T("Test message – notifications are working.", "Testnachricht – die Benachrichtigung funktioniert."));
         return FlushAsync("Test", null, cancellationToken);
     }
 

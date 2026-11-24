@@ -1,0 +1,63 @@
+[STREAM]
+index=0
+codec_name=dvd_subtitle
+codec_long_name=DVD subtitles
+profile=unknown
+codec_type=subtitle
+codec_tag_string=[0][0][0][0]
+codec_tag=0x0000
+width=720
+height=576
+id=N/A
+r_frame_rate=0/0
+avg_frame_rate=0/0
+time_base=1/1000
+start_pts=N/A
+start_time=N/A
+duration_ts=65432
+duration=65.432000
+bit_rate=N/A
+max_bit_rate=N/A
+bits_per_raw_sample=N/A
+nb_frames=N/A
+nb_read_frames=N/A
+nb_read_packets=N/A
+extradata=
+00000000: 7369 7a65 3a20 3732 3078 3537 360a 7061  size: 720x576.pa
+00000010: 6c65 7474 653a 2030 3030 3030 302c 2031  lette: 000000, 1
+00000020: 3031 3031 302c 2038 3038 3038 302c 2038  01010, 808080, 8
+00000030: 3038 3038 302c 2038 3038 3038 302c 2038  08080, 808080, 8
+00000040: 3038 3038 302c 2038 3038 3038 302c 2038  08080, 808080, 8
+00000050: 3038 3038 302c 2038 3038 3038 302c 2038  08080, 808080, 8
+00000060: 3038 3038 302c 2038 3038 3038 302c 2038  08080, 808080, 8
+00000070: 3038 3038 302c 2038 3038 3038 302c 2038  08080, 808080, 8
+00000080: 3038 3038 302c 2038 3038 3038 302c 2066  08080, 808080, f
+00000090: 3066 3066 300a 6375 7374 6f6d 2063 6f6c  0f0f0.custom col
+000000a0: 6f72 733a 204f 4646 2c20 7472 6964 783a  ors: OFF, tridx:
+000000b0: 2030 3030 302c 2063 6f6c 6f72 733a 2030   0000, colors: 0
+000000c0: 3030 3030 302c 2030 3030 3030 302c 2030  00000, 000000, 0
+000000d0: 3030 3030 302c 2030 3030 3030 300a       00000, 000000.
+
+extradata_size=222
+DISPOSITION:default=1
+DISPOSITION:dub=0
+DISPOSITION:original=0
+DISPOSITION:comment=0
+DISPOSITION:lyrics=0
+DISPOSITION:karaoke=0
+DISPOSITION:forced=0
+DISPOSITION:hearing_impaired=0
+DISPOSITION:visual_impaired=0
+DISPOSITION:clean_effects=0
+DISPOSITION:attached_pic=0
+DISPOSITION:timed_thumbnails=0
+DISPOSITION:non_diegetic=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
+DISPOSITION:multilayer=0
+TAG:language=de
+TAG:DURATION=00:01:05.432000000
+[/STREAM]

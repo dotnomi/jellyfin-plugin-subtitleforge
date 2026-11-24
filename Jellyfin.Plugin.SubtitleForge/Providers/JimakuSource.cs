@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SubtitleForge.Common;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SubtitleForge.Providers;
@@ -129,11 +130,10 @@ public partial class JimakuSource : ISubtitleSource
     /// <inheritdoc />
     public async Task<(byte[] Data, string? FileName)> DownloadAsync(SubtitleCandidate candidate, CancellationToken cancellationToken)
     {
+        // The API key travels in the Authorization header: only to jimaku.cc (.NET drops it on redirects).
+        var uri = SafeHttp.RequireHost(candidate.Reference, "jimaku.cc");
         using var client = CreateClient();
-        using var response = await client.GetAsync(candidate.Reference, cancellationToken).ConfigureAwait(false);
-        ThrowIfLimited(response);
-        response.EnsureSuccessStatusCode();
-        var data = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        var data = await SafeHttp.GetBytesLimitedAsync(client, uri, SafeHttp.MaxSubtitleDownloadBytes, ThrowIfLimited, cancellationToken).ConfigureAwait(false);
         return (data, candidate.Releases.FirstOrDefault());
     }
 
@@ -166,6 +166,7 @@ public partial class JimakuSource : ISubtitleSource
     private HttpClient CreateClient()
     {
         var client = _httpClientFactory.CreateClient(nameof(JimakuSource));
+        client.MaxResponseContentBufferSize = 4 * 1024 * 1024; // API answers are small; never buffer more
         client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("SubtitleForge-Jellyfin-Plugin/0.3");
         client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", ApiKey);

@@ -42,13 +42,13 @@ public class OcrTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Bild-Untertitel in Text umwandeln (OCR)";
+    public string Name => Loc.T("Convert image subtitles to text (OCR)", "Bild-Untertitel in Text umwandeln (OCR)");
 
     /// <inheritdoc />
     public string Key => "SubtitleForgeOcr";
 
     /// <inheritdoc />
-    public string Description => "Wandelt eingebettete PGS-Bilduntertitel in den gewünschten Sprachen einmalig per OCR in SRT um.";
+    public string Description => Loc.T("Converts embedded PGS image subtitles in the wanted languages to SRT once via OCR.", "Wandelt eingebettete PGS-Bilduntertitel in den gewünschten Sprachen einmalig per OCR in SRT um.");
 
     /// <inheritdoc />
     public string Category => "SubtitleForge";

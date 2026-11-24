@@ -40,6 +40,11 @@ public static partial class AssConverter
         foreach (var raw in ass.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
             var line = raw.Trim();
+            if (line.Length > Srt.MaxCueLength + 500)
+            {
+                continue; // untrusted input: absurd lines are dropped before any regex runs
+            }
+
             if (line.StartsWith('['))
             {
                 inEvents = line.Equals("[Events]", StringComparison.OrdinalIgnoreCase);

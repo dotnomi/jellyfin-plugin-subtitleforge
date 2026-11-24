@@ -60,14 +60,27 @@ public static partial class Srt
                 continue;
             }
 
+            if (lines[timeIdx].Length > 100)
+            {
+                continue; // a timing line is short; long ones are junk (and would make the regex slow)
+            }
+
             var m = TimeLineRegex().Match(lines[timeIdx]);
             if (!m.Success)
             {
                 continue;
             }
 
+            // Untrusted input: skip absurd cues (keeps the text regexes fast) and unparsable times.
             var text = string.Join('\n', lines.Skip(timeIdx + 1));
-            cues.Add(new SubtitleCue(ParseTime(m.Groups[1].Value), ParseTime(m.Groups[2].Value), text));
+            var start = ParseTime(m.Groups[1].Value);
+            var end = ParseTime(m.Groups[2].Value);
+            if (text.Length > MaxCueLength || start < 0 || end < 0)
+            {
+                continue;
+            }
+
+            cues.Add(new SubtitleCue(start, end, text));
         }
 
         return cues;
@@ -115,18 +128,27 @@ public static partial class Srt
     /// <returns>hh:mm:ss,fff.</returns>
     public static string FormatTime(long ms)
     {
-        ms = Math.Max(0, ms);
+        ms = Math.Clamp(ms, 0, (100L * 3600000) - 1);
         var ts = TimeSpan.FromMilliseconds(ms);
         return string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}:{2:00},{3:000}", (int)ts.TotalHours, ts.Minutes, ts.Seconds, ts.Milliseconds);
     }
 
+    /// <summary>Longest cue text that is accepted from a file.</summary>
+    public const int MaxCueLength = 2000;
+
     private static long ParseTime(string s)
     {
         var p = s.Replace('.', ',').Split(':', ',');
-        return (long.Parse(p[0], CultureInfo.InvariantCulture) * 3600000)
-            + (long.Parse(p[1], CultureInfo.InvariantCulture) * 60000)
-            + (long.Parse(p[2], CultureInfo.InvariantCulture) * 1000)
-            + long.Parse(p[3].PadRight(3, '0')[..3], CultureInfo.InvariantCulture);
+        if (p.Length < 4
+            || !int.TryParse(p[0], NumberStyles.None, CultureInfo.InvariantCulture, out var h) || h > 99
+            || !int.TryParse(p[1], NumberStyles.None, CultureInfo.InvariantCulture, out var m) || m > 59
+            || !int.TryParse(p[2], NumberStyles.None, CultureInfo.InvariantCulture, out var sec) || sec > 59
+            || !int.TryParse(p[3].PadRight(3, '0')[..3], NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
+        {
+            return -1;
+        }
+
+        return (h * 3600000L) + (m * 60000L) + (sec * 1000L) + ms;
     }
 
     [GeneratedRegex(@"\{\\[^}]*\}")]
@@ -144,6 +166,6 @@ public static partial class Srt
     [GeneratedRegex(@"[ \t]+")]
     private static partial Regex MultiSpaceRegex();
 
-    [GeneratedRegex(@"(\d+:\d{1,2}:\d{1,2}[,.]\d{1,3})\s*-->\s*(\d+:\d{1,2}:\d{1,2}[,.]\d{1,3})")]
+    [GeneratedRegex(@"(\d{1,3}:\d{1,2}:\d{1,2}[,.]\d{1,3})\s*-->\s*(\d{1,3}:\d{1,2}:\d{1,2}[,.]\d{1,3})")]
     private static partial Regex TimeLineRegex();
 }

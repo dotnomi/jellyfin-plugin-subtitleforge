@@ -126,18 +126,26 @@ public class SubDlSource : ISubtitleSource
     /// <inheritdoc />
     public async Task<(byte[] Data, string? FileName)> DownloadAsync(SubtitleCandidate candidate, CancellationToken cancellationToken)
     {
-        var url = candidate.Reference.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? candidate.Reference : DownloadBase + candidate.Reference;
-        url += (url.Contains('?', StringComparison.Ordinal) ? "&" : "?") + "api_key=" + Uri.EscapeDataString(ApiKey ?? string.Empty);
+        // Relative references are resolved against the download host; the key is only ever sent to subdl.com.
+        var target = candidate.Reference.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? candidate.Reference
+            : new Uri(new Uri(DownloadBase), candidate.Reference).ToString();
+        var uri = SafeHttp.RequireHost(target, "subdl.com");
+        var withKey = new Uri(uri.AbsoluteUri + (string.IsNullOrEmpty(uri.Query) ? "?" : "&") + "api_key=" + Uri.EscapeDataString(ApiKey ?? string.Empty));
         using var client = CreateClient();
-        using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.TooManyRequests)
-        {
-            throw new QuotaExceededException("SubDL download limit reached", DateTime.UtcNow.Date.AddDays(1));
-        }
-
-        response.EnsureSuccessStatusCode();
-        var data = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-        return (data, System.IO.Path.GetFileName(new Uri(url).AbsolutePath));
+        var data = await SafeHttp.GetBytesLimitedAsync(
+            client,
+            withKey,
+            SafeHttp.MaxSubtitleDownloadBytes,
+            r =>
+            {
+                if (r.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    throw new QuotaExceededException("SubDL download limit reached", DateTime.UtcNow.Date.AddDays(1));
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+        return (data, System.IO.Path.GetFileName(uri.AbsolutePath));
     }
 
     /// <summary>
@@ -276,6 +284,7 @@ public class SubDlSource : ISubtitleSource
     private HttpClient CreateClient()
     {
         var client = _httpClientFactory.CreateClient(nameof(SubDlSource));
+        client.MaxResponseContentBufferSize = 4 * 1024 * 1024; // API answers are small; never buffer more
         client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("SubtitleForge/0.1");
         return client;

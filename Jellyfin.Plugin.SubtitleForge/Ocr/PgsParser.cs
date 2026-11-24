@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Jellyfin.Plugin.SubtitleForge.Ocr;
 
@@ -29,9 +30,16 @@ public static class PgsParser
     /// </summary>
     /// <param name="stream">The .sup data.</param>
     /// <returns>Subtitles in display order.</returns>
-    public static List<PgsSubtitle> Parse(Stream stream)
+    public static List<PgsSubtitle> Parse(Stream stream) => Enumerate(stream).ToList();
+
+    /// <summary>
+    /// Decodes a .sup stream one displayed subtitle at a time, so OCR never holds more than one subtitle's images.
+    /// </summary>
+    /// <param name="stream">The .sup data.</param>
+    /// <returns>Subtitles in display order.</returns>
+    public static IEnumerable<PgsSubtitle> Enumerate(Stream stream)
     {
-        var result = new List<PgsSubtitle>();
+        var budget = new Budget();
         var palettes = new Dictionary<int, uint[]>();
         var objects = new Dictionary<int, ObjectData>();
         var header = new byte[13];
@@ -66,6 +74,7 @@ public static class PgsParser
                         {
                             objects.Clear();
                             palettes.Clear();
+                            budget.Rle = 0;
                         }
                     }
 
@@ -74,7 +83,7 @@ public static class PgsParser
                     ParsePalette(data, palettes);
                     break;
                 case SegObject:
-                    ParseObject(data, objects);
+                    ParseObject(data, objects, budget);
                     break;
                 case SegWindow:
                     break;
@@ -88,20 +97,26 @@ public static class PgsParser
                     if (pending is not null && pending.Rendered.Count > 0)
                     {
                         var end = Math.Max(current.PtsMs, pending.PtsMs + 1);
-                        result.Add(new PgsSubtitle(pending.PtsMs, end, pending.Forced, pending.Rendered));
+                        yield return new PgsSubtitle(pending.PtsMs, end, pending.Forced, pending.Rendered);
                     }
 
                     pending = null;
                     if (current.Objects.Count > 0)
                     {
                         palettes.TryGetValue(current.PaletteId, out var palette);
-                        foreach (var co in current.Objects)
+                        foreach (var co in current.Objects.Take(OcrLimits.MaxObjectsPerSubtitle))
                         {
                             if (palette is not null && objects.TryGetValue(co.ObjectId, out var obj) && obj.IsComplete)
                             {
                                 var img = Render(obj, palette);
                                 if (img is not null)
                                 {
+                                    budget.Pixels += (long)img.Width * img.Height;
+                                    if (budget.Pixels > OcrLimits.MaxDecodedPixels)
+                                    {
+                                        throw new InvalidDataException("Image subtitle stream exceeds the size limit");
+                                    }
+
                                     current.Rendered.Add((co.X, co.Y, img));
                                 }
                             }
@@ -118,10 +133,8 @@ public static class PgsParser
 
         if (pending is not null && pending.Rendered.Count > 0)
         {
-            result.Add(new PgsSubtitle(pending.PtsMs, pending.PtsMs + 3000, pending.Forced, pending.Rendered));
+            yield return new PgsSubtitle(pending.PtsMs, pending.PtsMs + 3000, pending.Forced, pending.Rendered);
         }
-
-        return result;
     }
 
     private static Composition ParseComposition(byte[] d, long ptsMs)
@@ -169,8 +182,14 @@ public static class PgsParser
         }
     }
 
-    private static void ParseObject(byte[] d, Dictionary<int, ObjectData> objects)
+    private static void ParseObject(byte[] d, Dictionary<int, ObjectData> objects, Budget budget)
     {
+        // Cached object data is bounded in total, so a stream cannot fill memory with many large objects.
+        if (budget.Rle + d.Length > OcrLimits.MaxRleBytes)
+        {
+            return;
+        }
+
         var id = (d[0] << 8) | d[1];
         var seq = d[3];
         if ((seq & 0x80) != 0)
@@ -180,14 +199,25 @@ public static class PgsParser
                 Width = (d[7] << 8) | d[8],
                 Height = (d[9] << 8) | d[10],
             };
-            obj.Rle.Write(d, 11, d.Length - 11);
+            if (d.Length > 11)
+            {
+                obj.Rle.Write(d, 11, d.Length - 11);
+            }
+
             obj.IsComplete = (seq & 0x40) != 0;
+            if (objects.TryGetValue(id, out var old))
+            {
+                budget.Rle -= old.Rle.Length;
+            }
+
             objects[id] = obj;
+            budget.Rle += obj.Rle.Length;
         }
-        else if (objects.TryGetValue(id, out var obj))
+        else if (objects.TryGetValue(id, out var obj) && obj.Rle.Length + d.Length <= OcrLimits.MaxObjectBytes)
         {
             obj.Rle.Write(d, 4, d.Length - 4);
             obj.IsComplete = (seq & 0x40) != 0;
+            budget.Rle += d.Length - 4;
         }
     }
 
@@ -197,7 +227,8 @@ public static class PgsParser
     /// </summary>
     private static GrayImage? Render(ObjectData obj, uint[] palette)
     {
-        if (obj.Width <= 0 || obj.Height <= 0)
+        if (obj.Width <= 0 || obj.Height <= 0 || obj.Width > OcrLimits.MaxDimension || obj.Height > OcrLimits.MaxDimension
+            || (long)obj.Width * obj.Height > OcrLimits.MaxObjectPixels)
         {
             return null;
         }
@@ -296,6 +327,13 @@ public static class PgsParser
         public List<CompositionObject> Objects { get; } = new();
 
         public List<(int X, int Y, GrayImage Image)> Rendered { get; } = new();
+    }
+
+    private sealed class Budget
+    {
+        public long Rle { get; set; }
+
+        public long Pixels { get; set; }
     }
 
     private sealed class ObjectData

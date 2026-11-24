@@ -53,8 +53,12 @@ public sealed class ItemProcessor : IDisposable
     /// <summary>State: a fitting subtitle may exist but the source's daily limit was reached; retried next run.</summary>
     public const string WaitingForQuota = "waiting-quota";
 
+    /// <summary>Outcome for a subtitle the user deleted: not created again automatically.</summary>
+    public const string DeletedByUser = "deleted";
+
     private static readonly HashSet<string> AssCodecs = new(StringComparer.OrdinalIgnoreCase) { "ass", "ssa" };
     private static readonly HashSet<string> PgsCodecs = new(StringComparer.OrdinalIgnoreCase) { "pgssub", "hdmv_pgs_subtitle", "pgs", "sup" };
+    private static readonly HashSet<string> VobSubCodecs = new(StringComparer.OrdinalIgnoreCase) { "dvdsub", "dvd_subtitle", "vobsub" };
     private static readonly HashSet<string> ImageCodecs = new(StringComparer.OrdinalIgnoreCase) { "pgssub", "hdmv_pgs_subtitle", "pgs", "sup", "dvdsub", "dvd_subtitle", "vobsub", "dvbsub", "dvb_subtitle", "xsub" };
 
     private readonly LanguageResolver _languages;
@@ -208,7 +212,7 @@ public sealed class ItemProcessor : IDisposable
             {
                 if (position < 0 || position >= tracks.Count)
                 {
-                    return new WhisperOutcome(false, $"Tonspur {position + 1} existiert nicht");
+                    return new WhisperOutcome(false, Loc.German ? FormattableString.Invariant($"Tonspur {position + 1} existiert nicht") : FormattableString.Invariant($"Audio track {position + 1} does not exist"));
                 }
 
                 audio = tracks[position];
@@ -227,7 +231,7 @@ public sealed class ItemProcessor : IDisposable
 
                 if (removed > 0)
                 {
-                    outcome = outcome with { Message = outcome.Message + $"; {removed} heruntergeladene Datei(en) ersetzt" };
+                    outcome = outcome with { Message = outcome.Message + (Loc.German ? FormattableString.Invariant($"; {removed} heruntergeladene Datei(en) ersetzt") : FormattableString.Invariant($"; {removed} downloaded file(s) replaced")) };
                 }
             }
 
@@ -242,11 +246,31 @@ public sealed class ItemProcessor : IDisposable
     /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
+    /// <summary>
+    /// State key that marks a file the user deleted (so automatic runs do not create it again).
+    /// </summary>
+    /// <param name="stem">File stem (path without extension, or file name).</param>
+    /// <returns>Key.</returns>
+    public static string DeletedKey(string stem) => "deleted:" + Path.GetFileName(stem);
+
+    /// <summary>
+    /// Whether OCR can convert this subtitle codec (Blu-ray PGS or DVD VobSub).
+    /// </summary>
+    /// <param name="codec">Codec name.</param>
+    /// <returns>True if supported.</returns>
+    public static bool IsOcrCodec(string? codec) => PgsCodecs.Contains(codec ?? string.Empty) || VobSubCodecs.Contains(codec ?? string.Empty);
+
+    private static bool IsBadCandidate(Exception ex) =>
+        ex is InvalidDataException or System.Net.Http.HttpRequestException or NotSupportedException or FormatException
+            or System.Text.Json.JsonException or ArgumentException;
+
+    private bool UserDeleted(Video video, string stem) => _state.Get(video.Id, DeletedKey(stem))?.Outcome == DeletedByUser;
+
     private async Task<int> OcrAsync(Video video, List<string> languages, PluginConfiguration config, CancellationToken cancellationToken)
     {
         var streams = video.GetMediaStreams();
         var jobs = new List<(MediaStream Stream, string Stem, bool Forced)>();
-        foreach (var s in streams.Where(s => s.Type == MediaStreamType.Subtitle && !s.IsExternal && PgsCodecs.Contains(s.Codec ?? string.Empty)))
+        foreach (var s in streams.Where(s => s.Type == MediaStreamType.Subtitle && !s.IsExternal && IsOcrCodec(s.Codec)))
         {
             var two = Lang.ToTwoLetter(s.Language);
             if (two is null ? !config.OcrIncludeUndefined : !languages.Contains(two))
@@ -262,14 +286,14 @@ public sealed class ItemProcessor : IDisposable
             }
 
             var tag = OcrTask.FileTag;
-            var sameKind = streams.Where(o => o.Type == MediaStreamType.Subtitle && !o.IsExternal && PgsCodecs.Contains(o.Codec ?? string.Empty)
+            var sameKind = streams.Where(o => o.Type == MediaStreamType.Subtitle && !o.IsExternal && IsOcrCodec(o.Codec)
                 && string.Equals(o.Language, s.Language, StringComparison.OrdinalIgnoreCase) && o.IsForced == s.IsForced).ToList();
             if (sameKind.Count > 1)
             {
                 tag += (sameKind.IndexOf(s) + 1).ToString(CultureInfo.InvariantCulture);
             }
 
-            var lang = string.IsNullOrWhiteSpace(s.Language) ? "und" : s.Language;
+            var lang = Lang.FileToken(s.Language);
 
             // Forced either by container flag, or (checked after OCR) by the PGS forced flags. A stream without the
             // forced flag may have been saved as forced earlier – but only if no other stream of that language is a
@@ -282,7 +306,7 @@ public sealed class ItemProcessor : IDisposable
                 && o.IsForced && Lang.Same(o.Language, s.Language));
             var savedAsForcedEarlier = !s.IsForced && !otherForcedStream
                 && SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, true, tag));
-            if (!ownStemExists && !savedAsForcedEarlier)
+            if (!ownStemExists && !savedAsForcedEarlier && !UserDeleted(video, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag)))
             {
                 jobs.Add((s, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag), s.IsForced));
             }
@@ -303,10 +327,21 @@ public sealed class ItemProcessor : IDisposable
             try
             {
                 var sw = Stopwatch.StartNew();
-                await _ffmpeg.ExtractStreamAsync(video.Path, StreamMap.Specifier(streams, job.Stream), "sup", sup, cancellationToken).ConfigureAwait(false);
+                var specifier = StreamMap.Specifier(streams, job.Stream);
                 OcrResult result;
-                await using (var fs = File.OpenRead(sup))
+                if (VobSubCodecs.Contains(job.Stream.Codec ?? string.Empty))
                 {
+                    // DVD: ffmpeg has no VobSub muxer, so copy the packets into an MPEG-PS (timing from the PTS) and
+                    // read size and palette from the stream's codec data (the ".idx" header).
+                    var idx = await _ffmpeg.ReadExtradataTextAsync(video.Path, specifier, cancellationToken).ConfigureAwait(false) ?? string.Empty;
+                    await _ffmpeg.ExtractStreamAsync(video.Path, specifier, "vob", sup, cancellationToken).ConfigureAwait(false);
+                    await using var fs = File.OpenRead(sup);
+                    result = ImageSubtitleOcr.Convert(VobSubParser.Parse(idx, fs), recognizer, null, cancellationToken);
+                }
+                else
+                {
+                    await _ffmpeg.ExtractStreamAsync(video.Path, specifier, "sup", sup, cancellationToken).ConfigureAwait(false);
+                    await using var fs = File.OpenRead(sup);
                     result = ImageSubtitleOcr.Convert(fs, recognizer, null, cancellationToken);
                 }
 
@@ -350,12 +385,12 @@ public sealed class ItemProcessor : IDisposable
             var stem = r.Stem;
             if (forced && !r.Forced || forced && !stem.Contains(".forced.", StringComparison.Ordinal))
             {
-                stem = SubtitleFileWriter.BuildStem(video, string.IsNullOrWhiteSpace(r.Stream.Language) ? "und" : r.Stream.Language, true, OcrTask.FileTag);
+                stem = SubtitleFileWriter.BuildStem(video, Lang.FileToken(r.Stream.Language), true, OcrTask.FileTag);
             }
             else if (!forced && forcedByCount.Count > 0 && results.Count(x => !x.Forced && !forcedByCount.Contains(x.Stream) && Lang.Same(x.Stream.Language, r.Stream.Language)) == 1)
             {
                 // The remaining full track of that language no longer needs a number.
-                stem = SubtitleFileWriter.BuildStem(video, string.IsNullOrWhiteSpace(r.Stream.Language) ? "und" : r.Stream.Language, false, OcrTask.FileTag);
+                stem = SubtitleFileWriter.BuildStem(video, Lang.FileToken(r.Stream.Language), false, OcrTask.FileTag);
             }
 
             var path = await _writer.SaveAsync(video, stem, Srt.Write(r.Result.Cues), cancellationToken).ConfigureAwait(false);
@@ -387,13 +422,13 @@ public sealed class ItemProcessor : IDisposable
                 continue;
             }
 
-            var lang = s.Language!;
+            var lang = Lang.FileToken(s.Language);
             var fullStem = SubtitleFileWriter.BuildStem(video, lang, s.IsForced, AssTag);
             var forcedStem = SubtitleFileWriter.BuildStem(video, lang, true, AssTag);
-            var wantFull = config.ConvertAssToSrt && !SubtitleFileWriter.Exists(video, fullStem);
+            var wantFull = config.ConvertAssToSrt && !SubtitleFileWriter.Exists(video, fullStem) && !UserDeleted(video, fullStem);
 
             // A forced track is only derived when none exists in that language (embedded, external or from OCR).
-            var wantForced = config.DeriveForcedSubtitles && !s.IsForced && !SubtitleFileWriter.Exists(video, forcedStem)
+            var wantForced = config.DeriveForcedSubtitles && !s.IsForced && !SubtitleFileWriter.Exists(video, forcedStem) && !UserDeleted(video, forcedStem)
                 && !streams.Any(o => o.Type == MediaStreamType.Subtitle && o.IsForced && Lang.Same(o.Language, lang));
             if (!wantFull && !wantForced)
             {
@@ -464,7 +499,7 @@ public sealed class ItemProcessor : IDisposable
 
             var state = _state.Get(video.Id, statePrefix + lang);
             if (!force && state is not null && state.Outcome != WaitingForQuota
-                && state.LastTriedUtc > DateTime.UtcNow.AddDays(-Math.Max(1, config.DownloadRetryDays)))
+                && (state.Outcome == DeletedByUser || state.LastTriedUtc > DateTime.UtcNow.AddDays(-Math.Max(1, config.DownloadRetryDays))))
             {
                 continue;
             }
@@ -493,7 +528,7 @@ public sealed class ItemProcessor : IDisposable
         {
             foreach (var l in missing)
             {
-                _state.Set(video.Id, l, WaitingForQuota, "Tageslimit aller Quellen erreicht – nächster Versuch beim nächsten Lauf");
+                _state.Set(video.Id, l, WaitingForQuota, Loc.T("Daily limit of all sources reached – next attempt on the next run", "Tageslimit aller Quellen erreicht – nächster Versuch beim nächsten Lauf"));
             }
 
             return 0;
@@ -549,7 +584,8 @@ public sealed class ItemProcessor : IDisposable
         return languages.Where(l =>
                 streams.Any(s => s.Type == MediaStreamType.Audio && Lang.Same(s.Language, l))
                 && !streams.Any(s => s.Type == MediaStreamType.Subtitle && s.IsForced && Lang.Same(s.Language, l))
-                && (force || _state.Get(video.Id, "forced:" + l) is not { } st || DateTime.UtcNow - st.LastTriedUtc > TimeSpan.FromDays(Math.Max(1, config.DownloadRetryDays))))
+                && (force || _state.Get(video.Id, "forced:" + l) is not { } st
+                    || (st.Outcome != DeletedByUser && DateTime.UtcNow - st.LastTriedUtc > TimeSpan.FromDays(Math.Max(1, config.DownloadRetryDays)))))
             .ToList();
     }
 
@@ -568,11 +604,21 @@ public sealed class ItemProcessor : IDisposable
             return 0;
         }
 
-        var (data, fileName) = await _search.GetSource(candidate.Source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
-        var cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode);
+        List<SubtitleCue>? cues;
+        try
+        {
+            var (data, fileName) = await _search.GetSource(candidate.Source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
+            cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode);
+        }
+        catch (Exception ex) when (IsBadCandidate(ex))
+        {
+            _logger.LogWarning("SubtitleForge: skipped forced {Source} {Release}: {Message}", candidate.Source, candidate.DisplayName, ex.Message);
+            cues = null;
+        }
+
         if (cues is null || cues.Count == 0)
         {
-            _state.Set(video.Id, "forced:" + lang, "error", "Datei nicht lesbar");
+            _state.Set(video.Id, "forced:" + lang, "error", Loc.T("File not readable", "Datei nicht lesbar"));
             return 0;
         }
 
@@ -599,13 +645,13 @@ public sealed class ItemProcessor : IDisposable
         if (full.Count == 0 && _search.Sources.Any(s => s.IsConfigured && _search.Quota.IsPaused(s.Name)))
         {
             // A paused source was not even asked – keep the item open for the next run.
-            _state.Set(video.Id, lang, WaitingForQuota, "Nicht alle Quellen befragt (Tageslimit) – nächster Versuch beim nächsten Lauf");
+            _state.Set(video.Id, lang, WaitingForQuota, Loc.T("Not all sources queried (daily limit) – next attempt on the next run", "Nicht alle Quellen befragt (Tageslimit) – nächster Versuch beim nächsten Lauf"));
             return 0;
         }
 
         if (full.Count == 0)
         {
-            _state.Set(video.Id, lang, "none-found", candidates.Count > 0 ? $"nur {candidates.Count} Forced-Untertitel gefunden" : null);
+            _state.Set(video.Id, lang, "none-found", candidates.Count == 0 ? null : Loc.German ? FormattableString.Invariant($"nur {candidates.Count} Forced-Untertitel gefunden") : FormattableString.Invariant($"only {candidates.Count} forced subtitle(s) found"));
             _logger.LogInformation("SubtitleForge: no {Lang} subtitle found for {Name}", lang, video.Path);
             return 0;
         }
@@ -617,7 +663,7 @@ public sealed class ItemProcessor : IDisposable
         if (usable.Count == 0)
         {
             var best = full[0];
-            _state.Set(video.Id, lang, "no-safe-match", $"{full.Count} Kandidaten, bester: {best.DisplayName} ({string.Join(", ", best.ScoreReasons)})");
+            _state.Set(video.Id, lang, "no-safe-match", (Loc.German ? FormattableString.Invariant($"{full.Count} Kandidaten, bester: ") : FormattableString.Invariant($"{full.Count} candidates, best: ")) + $"{best.DisplayName} ({string.Join(", ", best.ScoreReasons)})");
             return 0;
         }
 
@@ -699,12 +745,17 @@ public sealed class ItemProcessor : IDisposable
                 quotaBlocked = true;
                 _logger.LogWarning("SubtitleForge: {Message} – {Source} paused until {Until}", ex.Message, candidate.Source, _search.Quota.PausedUntil(candidate.Source));
             }
+            catch (Exception ex) when (IsBadCandidate(ex))
+            {
+                // One broken, oversized or disallowed download must not stop the other candidates.
+                _logger.LogWarning("SubtitleForge: skipped {Source} {Release}: {Message}", candidate.Source, candidate.DisplayName, ex.Message);
+            }
         }
 
         if (quotaBlocked)
         {
             // Not a failure: the item stays open and is retried on the next run (e.g. tomorrow night).
-            _state.Set(video.Id, lang, WaitingForQuota, "Tageslimit erreicht – wird beim nächsten Lauf fortgesetzt");
+            _state.Set(video.Id, lang, WaitingForQuota, Loc.T("Daily limit reached – continues on the next run", "Tageslimit erreicht – wird beim nächsten Lauf fortgesetzt"));
             return 0;
         }
 
@@ -712,7 +763,7 @@ public sealed class ItemProcessor : IDisposable
             video.Id,
             lang,
             rejected.Count > 0 ? "rejected-sync" : "download-failed",
-            rejected.Count > 0 ? $"{rejected.Count} Kandidat(en) passten nicht zur Tonspur: {string.Join(" | ", rejected.Take(3))}" : null);
+            rejected.Count == 0 ? null : (Loc.German ? FormattableString.Invariant($"{rejected.Count} Kandidat(en) passten nicht zur Tonspur: ") : FormattableString.Invariant($"{rejected.Count} candidate(s) did not match the audio track: ")) + string.Join(" | ", rejected.Take(3)));
         return 0;
     }
 

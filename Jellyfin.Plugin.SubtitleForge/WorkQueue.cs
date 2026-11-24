@@ -201,7 +201,7 @@ public sealed class WorkQueue : IHostedService, IDisposable
                     if (_doneSinceFlush > 0 && _pending.IsEmpty)
                     {
                         _doneSinceFlush = 0;
-                        await _notifier.FlushAsync("Neue Einträge", null, token).ConfigureAwait(false);
+                        await _notifier.FlushAsync(Loc.T("New items", "Neue Einträge"), null, token).ConfigureAwait(false);
                     }
 
                     continue;
@@ -258,11 +258,15 @@ public sealed class WorkQueue : IHostedService, IDisposable
         {
             case WorkKind.NewItem:
                 var n = await _processor.ProcessAsync(video, ProcessSteps.All, false, token).ConfigureAwait(false);
-                message = $"{video.Name}: {n} Untertitel erstellt";
+                message = Loc.German
+                    ? FormattableString.Invariant($"{video.Name}: {n} Untertitel erstellt")
+                    : FormattableString.Invariant($"{video.Name}: {n} subtitles created");
                 break;
             case WorkKind.Search:
                 var s = await _processor.ProcessAsync(video, ProcessSteps.Ocr | ProcessSteps.Download, true, token).ConfigureAwait(false);
-                message = $"{video.Name}: Suche abgeschlossen, {s} Untertitel gespeichert";
+                message = Loc.German
+                    ? FormattableString.Invariant($"{video.Name}: Suche abgeschlossen, {s} Untertitel gespeichert")
+                    : FormattableString.Invariant($"{video.Name}: search finished, {s} subtitles saved");
                 break;
             case WorkKind.Whisper:
                 var outcome = await _processor.WhisperAsync(video, job.Language ?? "de", job.AudioIndex, job.ReplaceDownload, token, new SyncProgress(p => CurrentProgress = p)).ConfigureAwait(false);

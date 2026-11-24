@@ -52,13 +52,13 @@ public class DownloadTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Fehlende Untertitel herunterladen";
+    public string Name => Loc.T("Download missing subtitles", "Fehlende Untertitel herunterladen");
 
     /// <inheritdoc />
     public string Key => "SubtitleForgeDownload";
 
     /// <inheritdoc />
-    public string Description => "Lädt fehlende Untertitel (SubDL, OpenSubtitles), prüft sie gegen die Tonspur und erzeugt sie notfalls mit Whisper.";
+    public string Description => Loc.T("Downloads missing subtitles (SubDL, OpenSubtitles), checks them against the audio track and generates them with Whisper if necessary.", "Lädt fehlende Untertitel (SubDL, OpenSubtitles), prüft sie gegen die Tonspur und erzeugt sie notfalls mit Whisper.");
 
     /// <inheritdoc />
     public string Category => "SubtitleForge";
@@ -91,7 +91,10 @@ public class DownloadTask : IScheduledTask
 
         _logger.LogInformation("SubtitleForge download: {Count} subtitle(s) written", written);
         var lastResort = await WhisperLastResortAsync(items, cancellationToken).ConfigureAwait(false);
-        await _notifier.FlushAsync("Download", lastResort > 0 ? $"{lastResort} Folge(n) per Whisper ergänzt (kein Download seit Tagen)" : null, cancellationToken).ConfigureAwait(false);
+        var extra = lastResort <= 0 ? null : Loc.German
+            ? FormattableString.Invariant($"{lastResort} Folge(n) per Whisper ergänzt (kein Download seit Tagen)")
+            : FormattableString.Invariant($"{lastResort} episode(s) filled in with Whisper (no download for days)");
+        await _notifier.FlushAsync("Download", extra, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -117,7 +120,7 @@ public class DownloadTask : IScheduledTask
             .SelectMany(v => wanted(v).Select(l => (Video: v, Language: l)))
             .Where(x => !hasLanguage(x.Video, x.Language))
             .Select(x => (x.Video, x.Language, Entry: state(x.Video, x.Language)))
-            .Where(x => x.Entry is { Outcome: not "saved", FirstMissingUtc: { } first } && first <= limit
+            .Where(x => x.Entry is { Outcome: not ("saved" or ItemProcessor.DeletedByUser), FirstMissingUtc: { } first } && first <= limit
                 && state(x.Video, "whisper:" + x.Language) is null)
             .OrderBy(x => x.Entry!.FirstMissingUtc)
             .Take(Math.Max(0, config.WhisperLastResortPerRun))

@@ -1,13 +1,14 @@
 ---
 name: "SubtitleForge"
 guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
-version: "0.3.0.0"
+version: "0.4.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
-overview: "Einheitliches Untertitel-Styling, OCR für Bild-Untertitel, Auto-Download und Audio-Sync"
+overview: "Uniform subtitle style, OCR for image subtitles, verified downloads, sync fixing, offline translation, Whisper"
 description: >
-  Einheitlicher Untertitel-Stil, OCR für Bild-Untertitel, Downloads (SubDL, OpenSubtitles, Jimaku) mit Prüfung gegen
-  die Tonspur, Sync-Korrektur, Whisper-Spracherkennung (CPU oder GPU per Vulkan) mit Offline-Übersetzung.
+  One subtitle style for the whole server, OCR for Blu-ray and DVD image subtitles, downloads (SubDL, OpenSubtitles,
+  Jimaku) checked against the audio, sync fixing, offline translation and Whisper speech recognition (CPU or GPU via
+  Vulkan). English and German interface.
 category: "Metadata"
 owner: "dotnomi"
 artifacts:
@@ -37,7 +38,8 @@ artifacts:
 - "whisperhost/linux-x64/sf-whisper"
 - "whisperhost/linux-arm64/sf-whisper"
 changelog: >
-  0.3: Untertitel-Button auf der Seite von Film/Folge/Staffel/Serie, ganze Staffeln/Serien auf einmal, Vorschau mit
-  "passt nicht", Statistik, Sync-Bericht für die ganze Bibliothek, Pause während der Wiedergabe, Zeitfenster,
-  Zusammenfassung im Aktivitätsprotokoll/Webhook, Whisper als letzter Ausweg nach X Tagen, GPU-Selbsttest,
-  ASS→SRT, Forced-Untertitel für Synchronfassungen, Quelle Jimaku, Forced-Erkennung bei mehreren OCR-Spuren.
+  0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's "⋮" menu and for multi-select,
+  delete single subtitles the plugin made, every plugin subtitle is marked "[SF]" (older files are renamed once),
+  live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan.
+  Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and
+  image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.

@@ -181,7 +181,12 @@ public sealed class OpenSubtitlesSource : ISubtitleSource, IDisposable
         using var doc = JsonDocument.Parse(body);
         var link = doc.RootElement.GetProperty("link").GetString() ?? throw new InvalidOperationException("No download link");
         var fileName = doc.RootElement.TryGetProperty("file_name", out var fn) ? fn.GetString() : null;
-        var data = await client.GetByteArrayAsync(link, cancellationToken).ConfigureAwait(false);
+        // The file link is fetched without the API key and token (plain client), and only from OpenSubtitles hosts.
+        var uri = SafeHttp.RequireHost(link, "opensubtitles.com", "opensubtitles.org");
+        using var plain = _httpClientFactory.CreateClient(nameof(OpenSubtitlesSource) + ".Files");
+        plain.Timeout = TimeSpan.FromSeconds(30);
+        plain.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+        var data = await SafeHttp.GetBytesLimitedAsync(plain, uri, SafeHttp.MaxSubtitleDownloadBytes, null, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("OpenSubtitles: downloaded {File}, {Remaining} downloads left today", fileName, RemainingDownloads);
         return (data, fileName);
     }
@@ -307,9 +312,12 @@ public sealed class OpenSubtitlesSource : ISubtitleSource, IDisposable
 
             using var doc = JsonDocument.Parse(body);
             _token = doc.RootElement.GetProperty("token").GetString();
-            if (doc.RootElement.TryGetProperty("base_url", out var b) && !string.IsNullOrEmpty(b.GetString()))
+            // The token and key go to this host from now on: accept only OpenSubtitles hosts.
+            if (doc.RootElement.TryGetProperty("base_url", out var b) && b.GetString() is { Length: > 0 } baseUrl
+                && System.Text.RegularExpressions.Regex.IsMatch(baseUrl, @"^[a-z0-9.-]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                && SafeHttp.IsAllowedHost(baseUrl, "opensubtitles.com"))
             {
-                _apiHost = b.GetString()!;
+                _apiHost = baseUrl;
             }
 
             if (doc.RootElement.TryGetProperty("user", out var u) && u.TryGetProperty("remaining_downloads", out var rd) && rd.ValueKind == JsonValueKind.Number)
@@ -329,6 +337,7 @@ public sealed class OpenSubtitlesSource : ISubtitleSource, IDisposable
     private HttpClient CreateClient()
     {
         var client = _httpClientFactory.CreateClient(nameof(OpenSubtitlesSource));
+        client.MaxResponseContentBufferSize = 4 * 1024 * 1024; // API answers are small; never buffer more
         client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
         client.DefaultRequestHeaders.Add("Api-Key", Plugin.Instance?.Configuration.OpenSubtitlesApiKey);

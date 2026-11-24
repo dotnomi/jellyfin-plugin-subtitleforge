@@ -152,8 +152,7 @@ public sealed class TranslationModels : IDisposable
                 {
                     response.EnsureSuccessStatusCode();
                     await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                    await using var target = File.Create(part);
-                    await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+                    await Jellyfin.Plugin.SubtitleForge.Common.SafeHttp.CopyToFileLimitedAsync(source, part, file.Size, cancellationToken).ConfigureAwait(false);
                 }
 
                 string hash;

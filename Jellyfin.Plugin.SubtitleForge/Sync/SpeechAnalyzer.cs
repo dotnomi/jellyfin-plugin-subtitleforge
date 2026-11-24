@@ -244,7 +244,7 @@ public sealed class SpeechAnalyzer : IDisposable
         var mix = audio.Channels >= 3
             ? new[] { "-af", "pan=mono|c0=FC" }
             : new[] { "-ac", "1" };
-        var args = new List<string> { "-nostdin", "-v", "error", "-y", "-i", video.Path, "-map", StreamMap.Specifier(video.GetMediaStreams(), audio), "-vn", "-sn", "-dn" };
+        var args = new List<string> { "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file", "-i", video.Path, "-map", StreamMap.Specifier(video.GetMediaStreams(), audio), "-vn", "-sn", "-dn" };
         args.AddRange(mix);
         args.AddRange(new[] { "-ar", "16000", "-f", "s16le", output });
         foreach (var a in args)

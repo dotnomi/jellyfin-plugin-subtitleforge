@@ -33,6 +33,18 @@ public static class Lang
     };
 
     /// <summary>
+    /// A language code that is safe to use in a file name: the code itself if it is a known language written as
+    /// letters (optionally with a region, e.g. "pt-BR"), otherwise "und". Container tags are untrusted input.
+    /// </summary>
+    /// <param name="code">Language from a stream.</param>
+    /// <returns>Safe token.</returns>
+    public static string FileToken(string? code) =>
+        code is not null && ToTwoLetter(code) is not null
+            && System.Text.RegularExpressions.Regex.IsMatch(code, "^[A-Za-z]{2,3}(-[A-Za-z]{2,4})?$")
+            ? code
+            : "und";
+
+    /// <summary>
     /// Converts any code to ISO 639-1 (two letters, lowercase). Returns null if unknown.
     /// </summary>
     /// <param name="code">Language code or name.</param>

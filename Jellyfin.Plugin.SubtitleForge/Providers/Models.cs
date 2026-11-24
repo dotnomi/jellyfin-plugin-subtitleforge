@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Jellyfin.Plugin.SubtitleForge.Common;
 
 namespace Jellyfin.Plugin.SubtitleForge.Providers;
 
@@ -104,7 +105,7 @@ public sealed class SubtitleCandidate
     /// <summary>
     /// Gets a display name.
     /// </summary>
-    public string DisplayName => Releases.Count > 0 ? Releases[0] : Source + " (ohne Release-Namen)";
+    public string DisplayName => Releases.Count > 0 ? Releases[0] : Source + Loc.T(" (no release name)", " (ohne Release-Namen)");
 }
 
 /// <summary>

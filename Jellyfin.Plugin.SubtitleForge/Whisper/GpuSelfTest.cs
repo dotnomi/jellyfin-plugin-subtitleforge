@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SubtitleForge.Common;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -90,19 +91,19 @@ public sealed class GpuSelfTest : IHostedService, IDisposable
             var helper = WhisperEngine.HelperPath();
             if (helper is null)
             {
-                return LastResult = "Selbsttest nicht möglich: Whisper-Helfer fehlt für diese Plattform";
+                return LastResult = Loc.T("Self-test not possible: Whisper helper is missing for this platform", "Selbsttest nicht möglich: Whisper-Helfer fehlt für diese Plattform");
             }
 
             if (!WhisperEngine.WantGpu())
             {
-                return LastResult = "keine nutzbare GPU: " + WhisperEngine.GpuStatus;
+                return LastResult = Loc.T("no usable GPU: ", "keine nutzbare GPU: ") + WhisperEngine.GpuStatus;
             }
 
             var model = WhisperModels.Get(config?.WhisperModel);
             var dir = Path.Combine(Plugin.Instance?.DataFolderPath ?? _paths.TempDirectory, "whisper-models");
             if (!downloadModel && !File.Exists(Path.Combine(dir, model.File)))
             {
-                return LastResult = "Selbsttest übersprungen: Whisper-Modell noch nicht heruntergeladen";
+                return LastResult = Loc.T("Self-test skipped: Whisper model not downloaded yet", "Selbsttest übersprungen: Whisper-Modell noch nicht heruntergeladen");
             }
 
             var modelPath = await _models.EnsureAsync(model, dir, cancellationToken).ConfigureAwait(false);
@@ -124,8 +125,10 @@ public sealed class GpuSelfTest : IHostedService, IDisposable
                 timeout.CancelAfter(TimeSpan.FromMinutes(5));
                 await WhisperEngine.TranscribeAsync(modelPath, pcm, windows, "de", false, 2, null, timeout.Token).ConfigureAwait(false);
                 var result = WhisperEngine.GpuBroken
-                    ? "GPU-Selbsttest fehlgeschlagen – Whisper nutzt die CPU: " + WhisperEngine.GpuStatus
-                    : FormattableString.Invariant($"GPU-Selbsttest bestanden ({WhisperEngine.LoadedRuntime}, {sw.Elapsed.TotalSeconds:F0} s für {Seconds} s Testton)");
+                    ? Loc.T("GPU self-test failed – Whisper uses the CPU: ", "GPU-Selbsttest fehlgeschlagen – Whisper nutzt die CPU: ") + WhisperEngine.GpuStatus
+                    : Loc.German
+                        ? FormattableString.Invariant($"GPU-Selbsttest bestanden ({WhisperEngine.LoadedRuntime}, {sw.Elapsed.TotalSeconds:F0} s für {Seconds} s Testton)")
+                        : FormattableString.Invariant($"GPU self-test passed ({WhisperEngine.LoadedRuntime}, {sw.Elapsed.TotalSeconds:F0} s for {Seconds} s of test audio)");
                 _logger.LogInformation("SubtitleForge: {Result}", result);
                 return LastResult = result;
             }

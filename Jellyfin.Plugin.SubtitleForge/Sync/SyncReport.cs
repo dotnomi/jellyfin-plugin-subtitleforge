@@ -84,13 +84,13 @@ public class SyncReportTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Sync-Bericht erstellen (nur prüfen)";
+    public string Name => Loc.T("Create sync report (check only)", "Sync-Bericht erstellen (nur prüfen)");
 
     /// <inheritdoc />
     public string Key => "SubtitleForgeSyncReport";
 
     /// <inheritdoc />
-    public string Description => "Prüft alle externen SRT-Untertitel gegen die Tonspur und listet verschobene in der SubtitleForge-Übersicht auf. Ändert nichts.";
+    public string Description => Loc.T("Checks all external SRT subtitles against the audio track and lists shifted ones in the SubtitleForge overview. Changes nothing.", "Prüft alle externen SRT-Untertitel gegen die Tonspur und listet verschobene in der SubtitleForge-Übersicht auf. Ändert nichts.");
 
     /// <inheritdoc />
     public string Category => "SubtitleForge";
@@ -195,7 +195,10 @@ public class SyncReportTask : IScheduledTask
         var shifted = rows.Count(r => r.Outcome == "shifted");
         var unsure = rows.Count(r => r.Outcome == "unsure");
         _logger.LogInformation("SubtitleForge sync report: {Count} files, {Shifted} shifted, {Unsure} unsure", rows.Count, shifted, unsure);
-        await _notifier.FlushAsync("Sync-Bericht", $"{rows.Count} Dateien geprüft: {shifted} verschoben, {unsure} passen evtl. nicht zur Datei", cancellationToken).ConfigureAwait(false);
+        var summary = Loc.German
+            ? FormattableString.Invariant($"{rows.Count} Dateien geprüft: {shifted} verschoben, {unsure} passen evtl. nicht zur Datei")
+            : FormattableString.Invariant($"{rows.Count} files checked: {shifted} shifted, {unsure} may not match the file");
+        await _notifier.FlushAsync(Loc.T("Sync report", "Sync-Bericht"), summary, cancellationToken).ConfigureAwait(false);
         progress.Report(100);
     }
 }

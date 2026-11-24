@@ -29,17 +29,30 @@ public static class ImageSubtitleOcr
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Result.</returns>
     public static OcrResult Convert(Stream sup, PaddleRecognizer recognizer, IProgress<double>? progress, CancellationToken cancellationToken)
+        => Convert(PgsParser.Enumerate(sup), recognizer, progress, cancellationToken);
+
+    /// <summary>
+    /// Runs OCR on already decoded image subtitles (PGS or VobSub).
+    /// </summary>
+    /// <param name="subs">Decoded subtitles in display order.</param>
+    /// <param name="recognizer">Recognizer.</param>
+    /// <param name="progress">Progress 0..1.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Result.</returns>
+    public static OcrResult Convert(IEnumerable<PgsSubtitle> subs, PaddleRecognizer recognizer, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var subs = PgsParser.Parse(sup);
+        ArgumentNullException.ThrowIfNull(subs);
         var cues = new List<SubtitleCue>();
         double confSum = 0;
         int lineCount = 0, low = 0;
-        var allForced = subs.Count > 0;
-
-        for (var i = 0; i < subs.Count; i++)
+        var total = subs is ICollection<PgsSubtitle> collection ? collection.Count : 0;
+        var any = false;
+        var allForced = true;
+        var i = 0;
+        foreach (var sub in subs)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var sub = subs[i];
+            any = true;
             allForced &= sub.Forced;
             var lines = new List<string>();
             foreach (var (_, _, image) in sub.Images)
@@ -79,9 +92,13 @@ public static class ImageSubtitleOcr
                 }
             }
 
-            progress?.Report((i + 1.0) / subs.Count);
+            i++;
+            if (total > 0)
+            {
+                progress?.Report((double)i / total);
+            }
         }
 
-        return new OcrResult(cues, lineCount == 0 ? 0 : confSum / lineCount, low, allForced);
+        return new OcrResult(cues, lineCount == 0 ? 0 : confSum / lineCount, low, any && allForced);
     }
 }

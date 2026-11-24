@@ -13,7 +13,8 @@ consistent style in the web client.
 > and report problems. There is no warranty (see [License](#license)).
 
 > [!NOTE]
-> The plugin's user interface is currently **German only**. Translations are welcome.
+> The user interface is available in **English and German**. It follows the server's display language, or set it
+> under *Settings → Language of the plugin*. Translations into more languages are welcome.
 
 ![Subtitle dialog on an item page (Abyss theme)](docs/images/dialog-abyss.jpg)
 
@@ -27,6 +28,7 @@ consistent style in the web client.
 - [How it decides what to do](#how-it-decides-what-to-do)
 - [GPU acceleration](#gpu-acceleration)
 - [Privacy: what leaves your server](#privacy-what-leaves-your-server)
+- [Security](#security)
 - [Building and tests](#building-and-tests)
 - [License](#license)
 
@@ -39,10 +41,13 @@ consistent style in the web client.
   Fire TV and phones apply evenly too.
 - Optional: removes non-speech captions like `[SCREAMING]`, `(gunshots)` or `JOHN:`, and optionally song lyrics.
 - Optional: converts embedded ASS/SSA subtitles (anime typesetting) into clean SRT, so they follow the style.
+- A **live preview** on the settings page shows the style on a player-like picture, on a dark and a bright scene.
+- Every file the plugin writes carries the mark **`[SF]`** in its track name (e.g. `[SF] SubDL`, `[SF] OCR`,
+  `[SF] [AI] Whisper`), so you always see which subtitles came from SubtitleForge.
 
 **Getting subtitles**
-- **OCR:** converts Blu-ray PGS image subtitles to text. Uses its own PGS decoder and PaddleOCR (PP-OCRv5), runs fully
-  offline, typically 98–99 % character confidence.
+- **OCR:** converts image subtitles to text: Blu-ray (PGS) and DVD (VobSub). Uses its own decoders and PaddleOCR
+  (PP-OCRv5), runs fully offline, typically 98–99 % character confidence.
 - **Downloads** from SubDL, OpenSubtitles.com and Jimaku (anime).
   - Candidates are ranked by release group, source, resolution and episode.
   - OpenSubtitles hash matches are preferred.
@@ -55,17 +60,21 @@ consistent style in the web client.
   - Pairs: German↔English, Japanese↔English, Japanese↔German via English.
 - **Whisper:** generates subtitles from any audio track into any of the supported languages.
   - Runs on demand, or automatically as a last resort when nothing was found for X days.
-  - Results are labelled `[AI] Whisper` / `[AI] Übersetzt`, so machine-made text is always recognisable.
+  - Results are labelled `[SF] [AI] Whisper` / `[SF] [AI] Translated` (German UI: `Übersetzt`), so machine-made text is
+    always recognisable.
 - **Forced subtitles** (signs, songs, foreign-language parts) for dubbed versions: derived from ASS tracks or downloaded
   as "foreign parts only". Unflagged forced tracks are detected.
 
 **Control**
-- A **"Subtitles" button** (CC icon) on every movie, episode, season and series page, for administrators. From there
-  you can search, translate or start Whisper, also for a whole season or series at once.
+- **SubtitleForge in Jellyfin's "⋮" menu** of every movie, episode, season and series (on cards, lists and the item
+  page), plus a CC button on the item page, for administrators. From there you can search, translate, start Whisper
+  or **delete single subtitles** the plugin made, also for a whole season or series at once.
+- Works with Jellyfin's **multi-select**: select several titles, open the "⋮" menu, choose SubtitleForge.
 - An **overview page** with its own entry in the dashboard sidebar. It shows:
   - per title, which languages exist, where they came from, and why something is missing
   - a preview of every subtitle file, with a *doesn't fit* button (the download is blocked and searched again)
   - a **job list** with progress, remaining time per job and in total
+  - **batch actions:** tick titles (or "all with missing languages") and search, translate or run Whisper for all of them
   - **statistics:** coverage per library and language
   - a **sync report:** checks all external subtitles against the audio without changing anything, then fixes them on request. Files the plugin did not make get a corrected copy, the original stays untouched.
 - Choose which **libraries** the plugin works on. Set languages per series or movie with a tag (`subs:de,en`).
@@ -76,7 +85,8 @@ consistent style in the web client.
 - **Crash-safe:** Whisper runs in a separate process.
   - If a GPU driver crashes, Jellyfin keeps running and the job is redone on the CPU.
   - A short GPU self-test after startup shows driver problems right away.
-- **Never touches your files:** the plugin only deletes or overwrites files it created itself.
+- **Never touches your files:** the plugin only deletes or overwrites files it created itself. A subtitle you delete is
+  not created again automatically.
 
 ## Screenshots
 
@@ -122,9 +132,9 @@ Runs fine on small hardware: OCR, sync and translation are CPU-friendly. Whisper
 
 ## Getting started
 
-1. Open **Dashboard → SubtitleForge → Einstellungen** (settings).
-2. **Bibliotheken** (libraries): tick the libraries the plugin should work on. Start with a small one.
-3. **Sprachen** (languages): default languages, e.g. `de,en`. Per series or movie you can override them with the tag
+1. Open **Dashboard → SubtitleForge → Settings**.
+2. **Libraries:** tick the libraries the plugin should work on. Start with a small one.
+3. **Languages:** default languages, e.g. `de,en`. Per series or movie you can override them with the tag
    `subs:de,ja` in the metadata editor; `subs:none` disables a title.
 4. Enter the **API keys** of the download sources you want to use.
 5. Optional: choose the subtitle **style**, enable **GPU** for Whisper, set the **time window** or a **webhook**.
@@ -132,10 +142,10 @@ Runs fine on small hardware: OCR, sync and translation are CPU-friendly. Whisper
 
 | Task | Default schedule |
 |---|---|
-| Bild-Untertitel in Text umwandeln (OCR) | daily 03:00 |
-| Fehlende Untertitel herunterladen (download, translate, Whisper last resort) | daily 04:00 |
-| Untertitel-Synchronität prüfen und korrigieren | manual |
-| Sync-Bericht erstellen (nur prüfen) | manual |
+| Convert image subtitles to text (OCR) | daily 03:00 |
+| Download missing subtitles (download, translate, Whisper last resort) | daily 04:00 |
+| Check and fix subtitle sync | manual |
+| Create sync report (check only) | manual |
 
 New movies and episodes are processed automatically a few minutes after the library scan, if enabled.
 
@@ -171,7 +181,19 @@ The `jellyfin` user needs access to `/dev/dri`, just like for hardware transcodi
 **NVIDIA:** only with the proprietary driver. The open-source Mesa driver for NVIDIA hangs on these workloads and is
 skipped automatically.
 
-**Docker:** the official image contains no Vulkan. Pass `/dev/dri` through and add the two packages in your own image.
+**Docker:** the official image contains no Vulkan. [`docker/`](docker/) has a small `Dockerfile` that adds it and a
+`compose.yaml` that passes the GPU through:
+
+```bash
+cd docker
+docker compose up -d --build
+```
+
+- AMD/Intel: `/dev/dri` is passed through and the container joins the host's `render` group
+  (`getent group render | cut -d: -f3`, set it as `RENDER_GID`).
+- NVIDIA: install the NVIDIA Container Toolkit on the host and use the commented NVIDIA block. The driver capability
+  `graphics` is required, otherwise the container gets no Vulkan driver.
+- linuxserver.io image: same idea, add `libvulkan1 mesa-vulkan-drivers` in your own image based on it.
 
 **Intel Arc on Proxmox:** with Proxmox' 6.8 kernel, the `i915` driver hung on Whisper compute jobs (GPU hang). With the
 opt-in kernel **6.14** it runs stably. The plugin survives such hangs either way and finishes on the CPU.
@@ -186,6 +208,27 @@ The settings page shows which GPU was found and whether Whisper runs on it. It a
 - **Optional webhook:** the run summary with titles and file names.
 
 Nothing else. OCR, sync, translation and Whisper run locally.
+
+## Security
+
+The plugin runs inside your Jellyfin server, so it is built to keep that door closed:
+
+- All plugin API endpoints require an **administrator**. The only anonymous endpoint is the style script that every
+  client loads; it contains the style settings and nothing else.
+- **Downloads** only go over https to the known hosts of each source (SubDL, OpenSubtitles, Jimaku), with size limits.
+  API keys are only ever sent to their own service. Search results handed to Jellyfin are signed, so a client cannot
+  make the server fetch other URLs.
+- **Untrusted files** (downloaded archives, subtitle tracks inside media files) are parsed with hard limits: no zip
+  bombs, bounded memory for image subtitles, safe file names even for odd language tags.
+- **Files:** the plugin only writes, renames or deletes subtitle files it made itself, recognised by their name
+  (`[SF]` mark or one of its tags). Writes are atomic and never follow planted links.
+- ffmpeg only reads local files (`-protocol_whitelist file`); all processes are started without a shell.
+
+Known limits: whether a file belongs to the plugin is decided by its name, so a file of your own that you name like a
+SubtitleForge file (e.g. with `[SF]`) is treated as the plugin's. Users who may edit metadata can set the `subs:` and
+`whisper:` tags and so cause work on the server.
+
+Found a vulnerability? Please report it privately, see [SECURITY.md](SECURITY.md).
 
 ## Building and tests
 

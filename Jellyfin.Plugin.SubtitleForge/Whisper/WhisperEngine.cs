@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Sync;
 
 namespace Jellyfin.Plugin.SubtitleForge.Whisper;
@@ -27,6 +28,7 @@ public static class WhisperEngine
     private static int _configured;
     private static string? _helperRuntime;
     private static bool _gpuBroken;
+    private static string? _gpuStatus;
 
     /// <summary>Gets or sets a check whether the helper should be paused right now (someone is watching).</summary>
     public static Func<bool>? PauseRequested { get; set; }
@@ -37,13 +39,17 @@ public static class WhisperEngine
     /// <summary>
     /// Gets the runtime whisper.cpp ran on last ("Vulkan" = GPU, "Cpu").
     /// </summary>
-    public static string LoadedRuntime => _helperRuntime ?? WhisperCore.LoadedRuntime ?? "noch nicht geladen";
+    public static string LoadedRuntime => _helperRuntime ?? WhisperCore.LoadedRuntime ?? Loc.T("not loaded yet", "noch nicht geladen");
 
     /// <summary>Gets a value indicating whether Whisper crashed on the GPU in this Jellyfin session.</summary>
     public static bool GpuBroken => _gpuBroken;
 
     /// <summary>Gets the result of the GPU check (why Vulkan is or is not used).</summary>
-    public static string GpuStatus { get; private set; } = "noch nicht geprüft";
+    public static string GpuStatus
+    {
+        get => _gpuStatus ?? Loc.T("not checked yet", "noch nicht geprüft");
+        private set => _gpuStatus = value;
+    }
 
     private static string PluginDirectory =>
         Path.GetDirectoryName(typeof(WhisperEngine).Assembly.Location) ?? AppContext.BaseDirectory;
@@ -59,7 +65,7 @@ public static class WhisperEngine
             : Plugin.Instance?.Configuration.WhisperUseGpu ?? true;
         if (!useGpu)
         {
-            GpuStatus = "GPU-Beschleunigung ausgeschaltet";
+            GpuStatus = Loc.T("GPU acceleration turned off", "GPU-Beschleunigung ausgeschaltet");
             return false;
         }
 
@@ -120,12 +126,12 @@ public static class WhisperEngine
             var mode = File.GetUnixFileMode(path);
             if (!mode.HasFlag(UnixFileMode.UserExecute))
             {
-                File.SetUnixFileMode(path, mode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+                File.SetUnixFileMode(path, mode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Diagnostics?.Invoke("Whisper-Helfer nicht ausführbar: " + ex.Message);
+            Diagnostics?.Invoke(Loc.T("Whisper helper not executable: ", "Whisper-Helfer nicht ausführbar: ") + ex.Message);
             return null;
         }
 
@@ -226,8 +232,8 @@ public static class WhisperEngine
         {
             // GPU driver/whisper.cpp crashed on the GPU: Jellyfin keeps running; use the CPU from now on.
             _gpuBroken = true;
-            GpuStatus = "GPU-Fehler bei Whisper (" + ex.Message + ") – bis zum nächsten Jellyfin-Neustart wird die CPU genutzt";
-            Diagnostics?.Invoke("Whisper auf der GPU abgebrochen, wiederhole auf der CPU: " + ex.Message);
+            GpuStatus = Loc.T("GPU error in Whisper (", "GPU-Fehler bei Whisper (") + ex.Message + Loc.T(") – the CPU is used until the next Jellyfin restart", ") – bis zum nächsten Jellyfin-Neustart wird die CPU genutzt");
+            Diagnostics?.Invoke(Loc.T("Whisper aborted on the GPU, retrying on the CPU: ", "Whisper auf der GPU abgebrochen, wiederhole auf der CPU: ") + ex.Message);
             progress?.Report(0);
             return await RunHelperAsync(helper, modelPath, pcmPath, windows, language, translateToEnglish, threads, false, progress, cancellationToken).ConfigureAwait(false);
         }
@@ -313,7 +319,7 @@ public static class WhisperEngine
                             if (pause != paused && Signal(process, pause ? SigStop : SigCont))
                             {
                                 paused = pause;
-                                Diagnostics?.Invoke(pause ? "Whisper pausiert (Wiedergabe läuft)" : "Whisper läuft weiter");
+                                Diagnostics?.Invoke(pause ? Loc.T("Whisper paused (playback running)", "Whisper pausiert (Wiedergabe läuft)") : Loc.T("Whisper resumed", "Whisper läuft weiter"));
                             }
 
                             if (paused)
@@ -384,8 +390,8 @@ public static class WhisperEngine
                 }
 
                 var reason = DateTime.UtcNow - lastActivity > StallTimeout
-                    ? "keine Rückmeldung mehr"
-                    : $"Exitcode {process.ExitCode}";
+                    ? Loc.T("stopped responding", "keine Rückmeldung mehr")
+                    : (Loc.German ? "Exitcode " : "exit code ") + process.ExitCode.ToString(CultureInfo.InvariantCulture);
                 throw new WhisperHelperException(tail.Length > 0 ? $"{reason}: {tail}" : reason);
             }
 

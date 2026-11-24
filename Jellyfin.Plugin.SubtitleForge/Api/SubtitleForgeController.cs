@@ -91,7 +91,7 @@ public class SubtitleForgeController : ControllerBase
                 Id = video.Id,
                 Name = Title(video),
                 LanguageSource = source,
-                WhisperAuto = LanguageResolver.ResolveWhisperAuto(video, out var whisperSource) ? "automatisch (" + whisperSource + ")" : "manuell (" + whisperSource + ")",
+                WhisperAuto = LanguageResolver.ResolveWhisperAuto(video, out var whisperSource) ? Loc.T("automatic (", "automatisch (") + whisperSource + ")" : Loc.T("manual (", "manuell (") + whisperSource + ")",
                 Languages = langs,
                 AudioTracks = streams.Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal).OrderBy(s => s.Index)
                     .Select((s, i) => new ReportAudio { Index = i, Language = s.Language, Title = s.DisplayTitle }).ToList(),
@@ -276,7 +276,7 @@ public class SubtitleForgeController : ControllerBase
             List<SubtitleCue> cues;
             try
             {
-                cues = s.Path!.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(s.Path)
+                cues = s.Path!.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(s.Path) && new System.IO.FileInfo(s.Path).Length < 20_000_000
                     ? Srt.Parse(System.IO.File.ReadAllText(s.Path))
                     : new List<SubtitleCue>();
             }
@@ -295,6 +295,7 @@ public class SubtitleForgeController : ControllerBase
                 forced = s.IsForced,
                 origin = info.Origin,
                 canReject = info.Origin is "download" or "whisper" or "translation",
+                canDelete = info.Origin != "foreign",
                 count = cues.Count,
                 preview = cues.Skip(start).Take(6).Select(c => new { time = Srt.FormatTime(c.StartMs)[..8], text = c.Text.Replace("\n", " / ", StringComparison.Ordinal) }),
             });
@@ -333,7 +334,7 @@ public class SubtitleForgeController : ControllerBase
         var info = OwnFile(video, path);
         if (info.Origin is not ("download" or "whisper" or "translation") || info.Language is null)
         {
-            return BadRequest("Nur Downloads und Whisper-Untertitel des Plugins können verworfen werden.");
+            return BadRequest(Loc.T("Only the plugin's downloads and Whisper subtitles can be rejected.", "Nur Downloads und Whisper-Untertitel des Plugins können verworfen werden."));
         }
 
         var lang2 = Lang.ToTwoLetter(info.Language) ?? info.Language;
@@ -348,15 +349,73 @@ public class SubtitleForgeController : ControllerBase
         var removed = _writer.DeleteOwn(video, info.Language, tag => string.Equals(tag, info.Tag, StringComparison.Ordinal), null);
         if (info.Origin == "translation")
         {
-            _state.Set(video.Id, "translate:" + lang2, "rejected", "vom Benutzer verworfen");
+            _state.Set(video.Id, "translate:" + lang2, "rejected", Loc.T("rejected by user", "vom Benutzer verworfen"));
         }
         if (info.Origin == "download")
         {
-            _state.Set(video.Id, lang2, "rejected", "vom Benutzer verworfen – suche neu");
+            _state.Set(video.Id, lang2, "rejected", Loc.T("rejected by user – searching again", "vom Benutzer verworfen – suche neu"));
             _queue.Enqueue(new WorkItem(video.Id, WorkKind.Search, null, null, DateTime.UtcNow));
         }
 
         return Ok(new { removed, blocked, searching = info.Origin == "download" });
+    }
+
+    /// <summary>
+    /// Deletes one subtitle file SubtitleForge made (download, translation, Whisper, OCR, converted). Embedded tracks
+    /// and files from elsewhere cannot be deleted. Automatic runs do not create the same subtitle again; a manual
+    /// action still can.
+    /// </summary>
+    /// <param name="id">Video id.</param>
+    /// <param name="file">File name (as returned by <see cref="Subtitles"/>).</param>
+    /// <returns>Result.</returns>
+    [HttpPost("Items/{id}/Subtitles/Delete")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Delete([FromRoute] Guid id, [FromQuery] string file)
+    {
+        if (_libraryManager.GetItemById(id) is not Video video)
+        {
+            return NotFound();
+        }
+
+        var path = video.GetMediaStreams()
+            .Where(s => s.Type == MediaStreamType.Subtitle && s.IsExternal && !string.IsNullOrEmpty(s.Path))
+            .Select(s => s.Path!)
+            .FirstOrDefault(p => string.Equals(System.IO.Path.GetFileName(p), file, StringComparison.Ordinal));
+        if (path is null || !System.IO.File.Exists(path))
+        {
+            return NotFound();
+        }
+
+        var info = OwnFile(video, path);
+        if (info.Origin == "foreign" || info.Language is null)
+        {
+            return BadRequest(Loc.T("Only subtitles SubtitleForge created can be deleted.", "Nur Untertitel, die SubtitleForge erstellt hat, können gelöscht werden."));
+        }
+
+        if (!_writer.DeleteFile(video, path))
+        {
+            return BadRequest(Loc.T("The file could not be deleted (permissions?).", "Die Datei konnte nicht gelöscht werden (Rechte?)."));
+        }
+
+        var lang2 = Lang.ToTwoLetter(info.Language) ?? info.Language;
+        var forced = info.Tag.StartsWith("forced.", StringComparison.Ordinal);
+        var detail = Loc.T("deleted by user", "vom Benutzer gelöscht");
+        var key = info.Origin switch
+        {
+            "download" => forced ? "forced:" + lang2 : lang2,
+            "translation" => "translate:" + lang2,
+            "whisper" => "whisper:" + lang2,
+            _ => null,
+        };
+        if (key is not null)
+        {
+            _state.Set(video.Id, key, ItemProcessor.DeletedByUser, detail, _state.Get(video.Id, key)?.Reference);
+        }
+
+        _state.Set(video.Id, ItemProcessor.DeletedKey(System.IO.Path.GetFileNameWithoutExtension(path)), ItemProcessor.DeletedByUser, detail);
+        return Ok(new { deleted = true });
     }
 
     /// <summary>
@@ -407,22 +466,20 @@ public class SubtitleForgeController : ControllerBase
         var cues = SubtitleContent.Parse(await System.IO.File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), file, null, null);
         if (cues is null || cues.Count < 3)
         {
-            return BadRequest("Datei enthält keine Untertitel");
+            return BadRequest(Loc.T("File contains no subtitles", "Datei enthält keine Untertitel"));
         }
 
         var alignment = await sync.AlignAsync(video, cues, false, cancellationToken).ConfigureAwait(false);
         if (alignment is null || !alignment.IsConfident)
         {
-            return Ok(new { ok = false, message = "Timing nicht sicher bestimmbar – evtl. gehört der Untertitel zu einer anderen Fassung" });
+            return Ok(new { ok = false, message = Loc.T("Timing could not be determined reliably – the subtitle may belong to a different version", "Timing nicht sicher bestimmbar – evtl. gehört der Untertitel zu einer anderen Fassung") });
         }
 
         var info = OwnFile(video, path);
         string written;
         if (info.Origin is "download" or "plugin")
         {
-            var tmp = path + ".tmp";
-            await System.IO.File.WriteAllTextAsync(tmp, Srt.Write(alignment.Cues), new System.Text.UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
-            System.IO.File.Move(tmp, path, true);
+            await SubtitleFileWriter.WriteAtomicAsync(path, new System.Text.UTF8Encoding(false).GetBytes(Srt.Write(alignment.Cues)), cancellationToken).ConfigureAwait(false);
             written = path;
         }
         else
@@ -442,7 +499,7 @@ public class SubtitleForgeController : ControllerBase
         }
 
         Jellyfin.Plugin.SubtitleForge.Sync.SyncReportTask.Save(rows);
-        return Ok(new { ok = true, message = $"korrigiert ({alignment}) → {System.IO.Path.GetFileName(written)}" });
+        return Ok(new { ok = true, message = Loc.T("fixed", "korrigiert") + $" ({alignment}) → {System.IO.Path.GetFileName(written)}" });
     }
 
     /// <summary>
@@ -609,50 +666,8 @@ public class SubtitleForgeController : ControllerBase
 
     private (string Origin, string? Language, string Tag) OwnFile(Video video, string path)
     {
-        var prefix = System.IO.Path.GetFileNameWithoutExtension(video.Path) + ".";
-        var stem = System.IO.Path.GetFileNameWithoutExtension(path);
-        if (!stem.StartsWith(prefix, StringComparison.Ordinal))
-        {
-            return ("foreign", null, string.Empty);
-        }
-
-        var rest = stem[prefix.Length..];
-        var dot = rest.IndexOf('.', StringComparison.Ordinal);
-        if (dot < 0)
-        {
-            return ("foreign", rest, string.Empty);
-        }
-
-        var language = rest[..dot];
-        var tag = rest[(dot + 1)..];
-        var bare = tag.StartsWith("forced.", StringComparison.Ordinal) ? tag[7..] : tag;
-        string origin;
-        if (_search.Sources.Any(x => string.Equals(x.Name, bare, StringComparison.OrdinalIgnoreCase)))
-        {
-            origin = "download";
-        }
-        else if (Translation.SubtitleTranslator.IsTranslationTag(bare))
-        {
-            origin = "translation";
-        }
-        else if (Jellyfin.Plugin.SubtitleForge.Whisper.WhisperService.IsWhisperTag(bare))
-        {
-            origin = "whisper";
-        }
-        else if (bare.StartsWith(Jellyfin.Plugin.SubtitleForge.Ocr.OcrTask.FileTag, StringComparison.Ordinal))
-        {
-            origin = "ocr";
-        }
-        else if (bare is "Sync" or "Text" or "Forced")
-        {
-            origin = "plugin";
-        }
-        else
-        {
-            origin = "foreign";
-        }
-
-        return (origin, language, tag);
+        var o = SubtitleOrigin.Classify(video.Path, path, _search.Sources.Select(x => x.Name));
+        return (o.Origin, o.Language, o.Tag);
     }
 
     private static string Title(BaseItem item) => item is Episode e
@@ -663,10 +678,10 @@ public class SubtitleForgeController : ControllerBase
     {
         if (!s.IsExternal)
         {
-            return s.IsTextSubtitleStream ? "eingebettet" : "eingebettet (Bild)";
+            return s.IsTextSubtitleStream ? Loc.T("embedded", "eingebettet") : Loc.T("embedded (image)", "eingebettet (Bild)");
         }
 
-        return string.IsNullOrEmpty(s.Title) ? "extern" : s.Title!;
+        return string.IsNullOrEmpty(s.Title) ? Loc.T("external", "extern") : s.Title!;
     }
 
     /// <summary>One item in the overview.</summary>

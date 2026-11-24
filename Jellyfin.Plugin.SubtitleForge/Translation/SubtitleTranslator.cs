@@ -22,8 +22,8 @@ namespace Jellyfin.Plugin.SubtitleForge.Translation;
 /// </summary>
 public partial class SubtitleTranslator
 {
-    /// <summary>File name tag prefix of translated subtitles.</summary>
-    public const string TagPrefix = "[AI] Übersetzt";
+    /// <summary>Gets the file name tag prefix of translated subtitles (in the display language).</summary>
+    public static string TagPrefix => Loc.T("[AI] Translated", "[AI] Übersetzt");
 
     private static readonly HashSet<string> TextCodecs = new(StringComparer.OrdinalIgnoreCase) { "subrip", "srt", "ass", "ssa" };
     private readonly TranslationService _translation;
@@ -54,7 +54,8 @@ public partial class SubtitleTranslator
     /// </summary>
     /// <param name="tag">Tag.</param>
     /// <returns>True for translations.</returns>
-    public static bool IsTranslationTag(string tag) => tag.Contains("Übersetzt", StringComparison.OrdinalIgnoreCase);
+    public static bool IsTranslationTag(string tag) =>
+        tag.Contains("[AI] Übersetzt", StringComparison.OrdinalIgnoreCase) || tag.Contains("[AI] Translated", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Picks the best source subtitle for a target language: official embedded text first, then OCR of the disc
@@ -74,7 +75,7 @@ public partial class SubtitleTranslator
                 ? x.Stream.Path is { } p && (p.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".ass", StringComparison.OrdinalIgnoreCase))
                     && !WhisperService.IsWhisperTag(Path.GetFileNameWithoutExtension(p)) && !IsTranslationTag(Path.GetFileNameWithoutExtension(p))
                 : TextCodecs.Contains(x.Stream.Codec ?? string.Empty))
-            .OrderBy(x => !x.Stream.IsExternal ? 0 : Path.GetFileNameWithoutExtension(x.Stream.Path!).EndsWith(".OCR", StringComparison.Ordinal) ? 1 : 2)
+            .OrderBy(x => !x.Stream.IsExternal ? 0 : SubtitleFileWriter.TagOf(Path.GetFileNameWithoutExtension(x.Stream.Path!)) == Ocr.OcrTask.FileTag ? 1 : 2)
             .ThenBy(x => TranslationModels.Route(x.Language!, target)!.Count)
             .ThenByDescending(x => x.Language == "de" || x.Language == "en")
             .Select(x => ((MediaStream, string)?)(x.Stream, x.Language!))
@@ -94,19 +95,19 @@ public partial class SubtitleTranslator
         var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
         if (!config.TranslationEnabled)
         {
-            return new WhisperOutcome(false, "Übersetzung ist ausgeschaltet");
+            return new WhisperOutcome(false, Loc.T("Translation is turned off", "Übersetzung ist ausgeschaltet"));
         }
 
         var streams = video.GetMediaStreams();
         if (PickSource(streams, target) is not { } source)
         {
-            return new WhisperOutcome(false, $"kein übersetzbarer Untertitel für {target} vorhanden");
+            return new WhisperOutcome(false, Loc.German ? $"kein übersetzbarer Untertitel für {target} vorhanden" : $"no translatable subtitle for {target} available");
         }
 
         var cues = await ReadAsync(video, streams, source.Stream, cancellationToken).ConfigureAwait(false);
         if (cues.Count < 3)
         {
-            return new WhisperOutcome(false, "Quell-Untertitel ist leer");
+            return new WhisperOutcome(false, Loc.T("Source subtitle is empty", "Quell-Untertitel ist leer"));
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -130,12 +131,18 @@ public partial class SubtitleTranslator
 
         var stem = SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(target), false, $"{TagPrefix} {source.Language}-{target}");
         var path = await _writer.SaveAsync(video, stem, Srt.Write(result), cancellationToken).ConfigureAwait(false);
-        var message = FormattableString.Invariant($"{result.Count} Untertitel aus {Describe(source.Stream)} ({source.Language}) nach {target} übersetzt in {sw.Elapsed.TotalMinutes:F1} min");
+
+        // The same translation under the tag of the other display language is replaced.
+        var pair = $" {source.Language}-{target}";
+        _writer.DeleteOwn(video, Lang.ToThreeLetter(target), tag => IsTranslationTag(tag) && tag.EndsWith(pair, StringComparison.Ordinal), path);
+        var message = Loc.German
+            ? FormattableString.Invariant($"{result.Count} Untertitel aus {Describe(source.Stream)} ({source.Language}) nach {target} übersetzt in {sw.Elapsed.TotalMinutes:F1} min")
+            : FormattableString.Invariant($"{result.Count} subtitles translated from {Describe(source.Stream)} ({source.Language}) to {target} in {sw.Elapsed.TotalMinutes:F1} min");
         _logger.LogInformation("SubtitleForge: {Message} → {Path}", message, path);
         return new WhisperOutcome(true, message, path);
     }
 
-    private static string Describe(MediaStream s) => s.IsExternal ? Path.GetFileName(s.Path) ?? "Datei" : "eingebetteter Spur";
+    private static string Describe(MediaStream s) => s.IsExternal ? Path.GetFileName(s.Path) ?? "file" : Loc.T("embedded track", "eingebetteter Spur");
 
     private async Task<List<SubtitleCue>> ReadAsync(Video video, IReadOnlyList<MediaStream> streams, MediaStream stream, CancellationToken cancellationToken)
     {

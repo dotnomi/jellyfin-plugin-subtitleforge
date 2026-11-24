@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Jellyfin.Plugin.SubtitleForge.Common;
 
 namespace Jellyfin.Plugin.SubtitleForge.Whisper;
 
@@ -80,18 +81,20 @@ public static class GpuDetector
     {
         if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
         {
-            return (false, "GPU-Beschleunigung gibt es nur für Linux x64");
+            return (false, Loc.T("GPU acceleration is only available on Linux x64", "GPU-Beschleunigung gibt es nur für Linux x64"));
         }
 
         var nodes = RenderNodes();
         if (nodes.Count == 0)
         {
-            return (false, "keine AMD-/Intel-/NVIDIA-GPU gefunden (/dev/dri fehlt oder ist nicht freigegeben)");
+            return (false, Loc.T("no AMD/Intel/NVIDIA GPU found (/dev/dri missing or not passed through)", "keine AMD-/Intel-/NVIDIA-GPU gefunden (/dev/dri fehlt oder ist nicht freigegeben)"));
         }
 
         if (!HasVulkanLoader())
         {
-            return (false, $"GPU gefunden ({string.Join(", ", nodes.Select(n => n.Vendor))}), aber kein Vulkan installiert (Paket libvulkan1 + mesa-vulkan-drivers)");
+            return (false, Loc.German
+                ? $"GPU gefunden ({string.Join(", ", nodes.Select(n => n.Vendor))}), aber kein Vulkan installiert (Paket libvulkan1 + mesa-vulkan-drivers)"
+                : $"GPU found ({string.Join(", ", nodes.Select(n => n.Vendor))}), but Vulkan is not installed (packages libvulkan1 + mesa-vulkan-drivers)");
         }
 
         // NVIDIA only with the proprietary driver: Mesa's open-source NVIDIA Vulkan driver (NVK/nouveau) hangs on
@@ -101,7 +104,7 @@ public static class GpuDetector
             var withoutNvidia = nodes.Where(n => n.Vendor != "NVIDIA").ToList();
             if (withoutNvidia.Count == 0)
             {
-                return (false, "NVIDIA-GPU gefunden, aber ohne den offiziellen NVIDIA-Treiber (Vulkan) – Whisper nutzt die CPU");
+                return (false, Loc.T("NVIDIA GPU found, but without the official NVIDIA driver (Vulkan) – Whisper uses the CPU", "NVIDIA-GPU gefunden, aber ohne den offiziellen NVIDIA-Treiber (Vulkan) – Whisper nutzt die CPU"));
             }
 
             nodes = withoutNvidia;

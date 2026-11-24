@@ -237,4 +237,14 @@ public class PluginConfiguration : BasePluginConfiguration
 #pragma warning disable CA1819 // XML-serialised configuration
     public string[] Libraries { get; set; } = System.Array.Empty<string>();
 #pragma warning restore CA1819
+
+    /// <summary>
+    /// Gets or sets the language of the plugin's pages and messages: "auto" (server display language), "en" or "de".
+    /// </summary>
+    public string UiLanguage { get; set; } = "auto";
+
+    /// <summary>
+    /// Gets or sets a value indicating whether older subtitle files got the "[SF]" mark (done once).
+    /// </summary>
+    public bool BrandMigrationDone { get; set; }
 }

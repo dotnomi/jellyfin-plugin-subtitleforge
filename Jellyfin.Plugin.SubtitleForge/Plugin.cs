@@ -4,6 +4,7 @@ using System.Globalization;
 using Jellyfin.Plugin.SubtitleForge.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 
@@ -19,10 +20,12 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// </summary>
     /// <param name="applicationPaths">Application paths.</param>
     /// <param name="xmlSerializer">XML serializer.</param>
-    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
+    /// <param name="serverConfig">Server configuration (display language for texts).</param>
+    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, IServerConfigurationManager serverConfig)
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        Common.Loc.ServerCulture = () => serverConfig.Configuration.UICulture;
     }
 
     /// <inheritdoc />
@@ -32,7 +35,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public override Guid Id => Guid.Parse("f1e66da5-7fed-45f1-a6b8-79c253708fc8");
 
     /// <inheritdoc />
-    public override string Description => "Einheitliches Untertitel-Styling, OCR für Bild-Subs, Auto-Download und Sync.";
+    public override string Description => "Uniform subtitle style, OCR for image subtitles, verified downloads, sync fixing, offline translation and Whisper.";
 
     /// <summary>
     /// Gets the current plugin instance.

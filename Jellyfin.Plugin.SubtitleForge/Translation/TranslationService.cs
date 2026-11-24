@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -82,7 +83,7 @@ public sealed partial class TranslationService
     /// <returns>Translations.</returns>
     public async Task<List<string>> TranslateAsync(IReadOnlyList<string> texts, string from, string to, string modelRoot, int threads, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var route = TranslationModels.Route(from, to) ?? throw new NotSupportedException($"Keine Übersetzung {from} → {to} verfügbar");
+        var route = TranslationModels.Route(from, to) ?? throw new NotSupportedException(Loc.German ? $"Keine Übersetzung {from} → {to} verfügbar" : $"No translation {from} → {to} available");
         var current = texts.ToList();
         for (var step = 0; step < route.Count; step++)
         {

@@ -87,13 +87,13 @@ public class LanguageResolver
             {
                 if (ParseWhisperTag(tag) is { } value)
                 {
-                    source = "Tag an " + candidate.Name;
+                    source = Loc.T("tag on ", "Tag an ") + candidate.Name;
                     return value;
                 }
             }
         }
 
-        source = "Plugin-Einstellung";
+        source = Loc.T("plugin setting", "Plugin-Einstellung");
         return (Plugin.Instance?.Configuration ?? new PluginConfiguration()).WhisperAutoFallback;
     }
 
@@ -121,7 +121,7 @@ public class LanguageResolver
                 var parsed = ParseTag(tag);
                 if (parsed is not null)
                 {
-                    source = "Tag an " + candidate.Name;
+                    source = Loc.T("tag on ", "Tag an ") + candidate.Name;
                     return parsed;
                 }
             }
@@ -132,7 +132,7 @@ public class LanguageResolver
             var libraryLanguages = _libraryManager.GetLibraryOptions(item)?.SubtitleDownloadLanguages;
             if (libraryLanguages is { Length: > 0 })
             {
-                source = "Bibliothek";
+                source = Loc.T("library", "Bibliothek");
                 return ParseList(string.Join(',', libraryLanguages));
             }
         }
@@ -141,7 +141,7 @@ public class LanguageResolver
             // item without library (e.g. during removal)
         }
 
-        source = "Plugin-Standard";
+        source = Loc.T("plugin default", "Plugin-Standard");
         return ParseList((Plugin.Instance?.Configuration ?? new PluginConfiguration()).DownloadLanguages);
     }
 

@@ -129,7 +129,7 @@ public sealed class WhisperService : IDisposable
         var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
         if (!config.WhisperEnabled)
         {
-            return new WhisperOutcome(false, "Whisper ist deaktiviert");
+            return new WhisperOutcome(false, Loc.T("Whisper is disabled", "Whisper ist deaktiviert"));
         }
 
         MediaStream audio;
@@ -140,12 +140,14 @@ public sealed class WhisperService : IDisposable
             var source = Lang.ToTwoLetter(audio.Language);
             if (source is null)
             {
-                return new WhisperOutcome(false, $"Sprache der Tonspur {audio.Index} unbekannt");
+                return new WhisperOutcome(false, Loc.German ? FormattableString.Invariant($"Sprache der Tonspur {audio.Index} unbekannt") : FormattableString.Invariant($"Language of audio track {audio.Index} unknown"));
             }
 
             if (source != language && !TranslationService.CanTranslate(source, language))
             {
-                return new WhisperOutcome(false, $"keine Übersetzung {source} → {language} verfügbar (Offline-Übersetzung: de↔en, ja↔en, ja↔de über Englisch)");
+                return new WhisperOutcome(false, Loc.German
+                    ? $"keine Übersetzung {source} → {language} verfügbar (Offline-Übersetzung: de↔en, ja↔en, ja↔de über Englisch)"
+                    : $"no translation {source} → {language} available (offline translation: de↔en, ja↔en, ja↔de via English)");
             }
 
             sourceLanguage = source;
@@ -155,7 +157,7 @@ public sealed class WhisperService : IDisposable
             var pick = PickAudio(video, language, config);
             if (pick is null)
             {
-                return new WhisperOutcome(false, $"keine passende Tonspur für {language}");
+                return new WhisperOutcome(false, Loc.German ? $"keine passende Tonspur für {language}" : $"no suitable audio track for {language}");
             }
 
             (audio, sourceLanguage) = pick.Value;
@@ -177,7 +179,7 @@ public sealed class WhisperService : IDisposable
             var windows = WhisperEngine.SpeechWindows(speech);
             if (windows.Count == 0)
             {
-                return new WhisperOutcome(false, "keine Sprache in der Tonspur erkannt");
+                return new WhisperOutcome(false, Loc.T("no speech detected in the audio track", "keine Sprache in der Tonspur erkannt"));
             }
 
             var threads = config.WhisperThreads > 0 ? config.WhisperThreads : Math.Clamp(Environment.ProcessorCount - 1, 1, 8);
@@ -198,7 +200,7 @@ public sealed class WhisperService : IDisposable
             var cues = WhisperPostProcessor.ToCues(segments, speech);
             if (cues.Count < 3)
             {
-                return new WhisperOutcome(false, "Whisper hat keinen verwertbaren Text erkannt");
+                return new WhisperOutcome(false, Loc.T("Whisper recognized no usable text", "Whisper hat keinen verwertbaren Text erkannt"));
             }
 
             var stem = SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(language), false, translate ? $"{FileTag} {sourceLanguage}-{language}" : FileTag);
@@ -208,8 +210,12 @@ public sealed class WhisperService : IDisposable
             // variants (e.g. German from the dub and German translated from Japanese) are kept side by side.
             var legacy = translate ? "Whisper-" + sourceLanguage : "Whisper";
             _writer.DeleteOwn(video, Lang.ToThreeLetter(language), tag => string.Equals(tag, legacy, StringComparison.Ordinal), path);
-            var message = FormattableString.Invariant(
-                $"Whisper {model.Key}: {cues.Count} Untertitel aus Tonspur {sourceLanguage}{(translate ? $", übersetzt nach {language}" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min auf {(WhisperEngine.LoadedRuntime == "Vulkan" ? "GPU" : "CPU")}");
+            var device = WhisperEngine.LoadedRuntime == "Vulkan" ? "GPU" : "CPU";
+            var message = Loc.German
+                ? FormattableString.Invariant(
+                    $"Whisper {model.Key}: {cues.Count} Untertitel aus Tonspur {sourceLanguage}{(translate ? $", übersetzt nach {language}" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min auf {device}")
+                : FormattableString.Invariant(
+                    $"Whisper {model.Key}: {cues.Count} subtitles from audio track {sourceLanguage}{(translate ? $", translated to {language}" : string.Empty)} in {sw.Elapsed.TotalMinutes:F1} min on {device}");
             _logger.LogInformation("SubtitleForge: {Message} → {Path}", message, path);
             return new WhisperOutcome(true, message, path);
         }

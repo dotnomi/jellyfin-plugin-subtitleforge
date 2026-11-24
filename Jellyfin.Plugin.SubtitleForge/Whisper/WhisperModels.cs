@@ -93,8 +93,7 @@ public sealed class WhisperModels : IDisposable
                 using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
                 await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                await using var target = File.Create(part);
-                await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+                await Jellyfin.Plugin.SubtitleForge.Common.SafeHttp.CopyToFileLimitedAsync(source, part, model.Size, cancellationToken).ConfigureAwait(false);
             }
 
             string hash;

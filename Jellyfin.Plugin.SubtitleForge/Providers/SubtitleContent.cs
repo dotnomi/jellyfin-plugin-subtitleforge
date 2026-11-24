@@ -32,38 +32,49 @@ public static partial class SubtitleContent
     /// <returns>Cues, or null if nothing usable.</returns>
     public static List<SubtitleCue>? Parse(byte[] payload, string? fileNameHint, int? season, int? episode)
     {
-        var files = new List<(string Name, byte[] Data)>();
+        // Archives come from third parties: only entry names and declared sizes are looked at first, then just the
+        // chosen entry is decompressed, with a hard size limit (protects against zip bombs).
+        const int MaxEntries = 1000;
+        const long MaxSubtitleBytes = 8L * 1024 * 1024;
+        (string Name, byte[] Data) chosen;
+        var count = 1;
         if (payload.Length > 4 && payload[0] == 'P' && payload[1] == 'K')
         {
             using var zip = new ZipArchive(new MemoryStream(payload), ZipArchiveMode.Read);
-            foreach (var entry in zip.Entries)
+            var entries = zip.Entries.Take(MaxEntries)
+                .Where(e => TextExtensions.Contains(Path.GetExtension(e.Name), StringComparer.OrdinalIgnoreCase) && e.Length > 0 && e.Length <= MaxSubtitleBytes)
+                .ToList();
+            if (entries.Count == 0)
             {
-                if (TextExtensions.Contains(Path.GetExtension(entry.Name), StringComparer.OrdinalIgnoreCase) && entry.Length < 20_000_000)
-                {
-                    using var s = entry.Open();
-                    using var ms = new MemoryStream();
-                    s.CopyTo(ms);
-                    files.Add((entry.FullName, ms.ToArray()));
-                }
+                return null;
             }
+
+            var entry = entries
+                .OrderByDescending(e => episode.HasValue && MatchesEpisode(e.FullName, season, episode.Value) ? 1 : 0)
+                .ThenByDescending(e => e.Name.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenByDescending(e => e.Length)
+                .First();
+            using var stream = entry.Open();
+            var data = Jellyfin.Plugin.SubtitleForge.Common.SafeHttp.ReadLimited(stream, MaxSubtitleBytes);
+            if (data is null)
+            {
+                return null;
+            }
+
+            chosen = (entry.FullName, data);
+            count = entries.Count;
         }
         else
         {
-            files.Add((fileNameHint ?? "subtitle.srt", payload));
+            if (payload.Length > MaxSubtitleBytes)
+            {
+                return null;
+            }
+
+            chosen = (fileNameHint ?? "subtitle.srt", payload);
         }
 
-        if (files.Count == 0)
-        {
-            return null;
-        }
-
-        var chosen = files
-            .OrderByDescending(f => episode.HasValue && MatchesEpisode(f.Name, season, episode.Value) ? 1 : 0)
-            .ThenByDescending(f => f.Name.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
-            .ThenByDescending(f => f.Data.Length)
-            .First();
-
-        if (files.Count > 1 && episode.HasValue && !MatchesEpisode(chosen.Name, season, episode.Value))
+        if (count > 1 && episode.HasValue && !MatchesEpisode(chosen.Name, season, episode.Value))
         {
             return null; // a pack without the wanted episode
         }
@@ -121,6 +132,11 @@ public static partial class SubtitleContent
         foreach (var raw in text.Split('\n'))
         {
             var line = raw.TrimEnd('\r');
+            if (line.Length > Srt.MaxCueLength + 500)
+            {
+                continue; // untrusted input: absurd lines are dropped before any regex runs
+            }
+
             if (line.StartsWith('['))
             {
                 inEvents = line.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
@@ -157,7 +173,14 @@ public static partial class SubtitleContent
                 continue;
             }
 
-            cues.Add(new SubtitleCue(ParseAssTime(parts[start]), ParseAssTime(parts[end]), body));
+            var startMs = ParseAssTime(parts[start]);
+            var endMs = ParseAssTime(parts[end]);
+            if (startMs < 0 || endMs < 0)
+            {
+                continue;
+            }
+
+            cues.Add(new SubtitleCue(startMs, endMs, body));
         }
 
         return cues;
@@ -169,23 +192,29 @@ public static partial class SubtitleContent
         var se = SeasonEpisodeRegex().Match(n);
         if (se.Success)
         {
-            var s = int.Parse(se.Groups[1].Value, CultureInfo.InvariantCulture);
-            var e = int.Parse(se.Groups[2].Value, CultureInfo.InvariantCulture);
-            return e == episode && (!season.HasValue || s == season.Value);
+            return int.TryParse(se.Groups[1].Value, CultureInfo.InvariantCulture, out var s)
+                && int.TryParse(se.Groups[2].Value, CultureInfo.InvariantCulture, out var e)
+                && e == episode && (!season.HasValue || s == season.Value);
         }
 
         var abs = AnimeEpisodeRegex().Match(n);
-        return abs.Success && int.Parse(abs.Groups[1].Value, CultureInfo.InvariantCulture) == episode;
+        return abs.Success && int.TryParse(abs.Groups[1].Value, CultureInfo.InvariantCulture, out var a) && a == episode;
     }
 
     private static long ParseAssTime(string s)
     {
         // h:mm:ss.cc
         var p = s.Trim().Split(':', '.');
-        return (long.Parse(p[0], CultureInfo.InvariantCulture) * 3600000)
-            + (long.Parse(p[1], CultureInfo.InvariantCulture) * 60000)
-            + (long.Parse(p[2], CultureInfo.InvariantCulture) * 1000)
-            + (long.Parse(p[3].PadRight(3, '0')[..3], CultureInfo.InvariantCulture));
+        if (p.Length < 4
+            || !int.TryParse(p[0], NumberStyles.None, CultureInfo.InvariantCulture, out var h) || h > 99
+            || !int.TryParse(p[1], NumberStyles.None, CultureInfo.InvariantCulture, out var m) || m > 59
+            || !int.TryParse(p[2], NumberStyles.None, CultureInfo.InvariantCulture, out var sec) || sec > 59
+            || !int.TryParse(p[3].PadRight(3, '0')[..3], NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
+        {
+            return -1;
+        }
+
+        return (h * 3600000L) + (m * 60000L) + (sec * 1000L) + ms;
     }
 
     [GeneratedRegex(@"\{[^}]*\\p[1-9]")]
