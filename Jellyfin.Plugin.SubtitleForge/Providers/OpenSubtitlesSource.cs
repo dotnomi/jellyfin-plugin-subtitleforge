@@ -138,7 +138,7 @@ public sealed class OpenSubtitlesSource : ISubtitleSource, IDisposable
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning("OpenSubtitles search failed: HTTP {Status} {Body}", (int)response.StatusCode, body.Length > 300 ? body[..300] : body);
-            return Array.Empty<SubtitleCandidate>();
+            throw new System.Net.Http.HttpRequestException("OpenSubtitles: HTTP " + (int)response.StatusCode, null, response.StatusCode);
         }
 
         return ParseSearch(body);

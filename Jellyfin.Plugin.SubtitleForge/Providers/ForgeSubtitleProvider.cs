@@ -106,7 +106,7 @@ public class ForgeSubtitleProvider : ISubtitleProvider
         var (source, reference, lang, season, episode, forced, itemId) = DecodeId(id);
         var candidate = new SubtitleCandidate { Source = source, Reference = reference, Language = lang, Forced = forced };
         var (data, fileName) = await _search.GetSource(source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
-        var cues = SubtitleContent.Parse(data, fileName, season, episode)
+        var cues = SubtitleContent.Parse(data, fileName, season, episode, lang)
             ?? throw new InvalidDataException("Downloaded subtitle contains no usable cues");
 
         // Correct the timing against the audio when we can be sure; otherwise deliver as-is (the user chose it).

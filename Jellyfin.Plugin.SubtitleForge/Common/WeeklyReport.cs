@@ -215,7 +215,7 @@ public sealed class WeeklyReport : IHostedService, IDisposable
 
             var since = DateTime.UtcNow.AddDays(-7);
             var failed = _state.All()
-                .Where(e => e.Entry.LastTriedUtc >= since && FailedOutcomes.Contains(e.Entry.Outcome) && !e.Key.StartsWith("block:", StringComparison.Ordinal))
+                .Where(e => e.Entry.LastTriedUtc >= since && FailedOutcomes.Contains(e.Entry.Outcome) && !e.Key.StartsWith("block:", StringComparison.Ordinal) && !e.Key.StartsWith("ocr:", StringComparison.Ordinal))
                 .Select(e => (e.ItemId, Lang: e.Key))
                 .Distinct()
                 .Select(e => _libraryManager.GetItemById(e.ItemId) is MediaBrowser.Controller.Entities.Video v ? SubtitleFileWriter.DisplayName(v) + " (" + e.Lang + ")" : null)

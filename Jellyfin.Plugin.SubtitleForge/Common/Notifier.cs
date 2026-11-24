@@ -141,8 +141,9 @@ public class Notifier
     /// <returns>Task.</returns>
     public Task TestAsync(CancellationToken cancellationToken)
     {
-        Record(Loc.T("Test message – notifications are working.", "Testnachricht – die Benachrichtigung funktioniert."));
-        return FlushAsync("Test", null, cancellationToken);
+        // Sent on its own: subtitles recorded since the last run stay for the real summary.
+        var line = Loc.T("Test message – notifications are working.", "Testnachricht – die Benachrichtigung funktioniert.");
+        return DeliverAsync("SubtitleForge Test", line, "• " + line, cancellationToken);
     }
 
     private async Task SendWebhookAsync(string url, string title, string body, CancellationToken cancellationToken)
@@ -160,7 +161,8 @@ public class Notifier
             else if (url.Contains("ntfy", StringComparison.OrdinalIgnoreCase))
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(body, Encoding.UTF8) };
-                request.Headers.TryAddWithoutValidation("Title", title);
+                // Header values must be ASCII ("Einträge"): ntfy understands RFC 2047 encoded words.
+                request.Headers.TryAddWithoutValidation("Title", title.All(c => c < 128) ? title : "=?UTF-8?B?" + Convert.ToBase64String(Encoding.UTF8.GetBytes(title)) + "?=");
                 response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
             }
             else

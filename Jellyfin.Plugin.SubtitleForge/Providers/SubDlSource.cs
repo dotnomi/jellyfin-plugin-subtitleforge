@@ -117,7 +117,7 @@ public class SubDlSource : ISubtitleSource
         if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
         {
             _logger.LogWarning("SubDL search failed: HTTP {Status} {Body}", (int)response.StatusCode, Truncate(body));
-            return Array.Empty<SubtitleCandidate>();
+            throw new System.Net.Http.HttpRequestException("SubDL: HTTP " + (int)response.StatusCode, null, response.StatusCode);
         }
 
         return ParseSearch(body, query);

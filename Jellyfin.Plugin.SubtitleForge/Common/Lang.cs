@@ -30,6 +30,40 @@ public static class Lang
         ["cs"] = new[] { "cze", "ces" },
         ["zh"] = new[] { "chi", "zho" },
         ["ko"] = new[] { "kor" },
+
+        // Languages whose bibliographic (B, used by MKV tags and Jellyfin) and terminology (T) codes differ.
+        ["ro"] = new[] { "rum", "ron" },
+        ["el"] = new[] { "gre", "ell" },
+        ["sk"] = new[] { "slo", "slk" },
+        ["is"] = new[] { "ice", "isl" },
+        ["fa"] = new[] { "per", "fas" },
+        ["sq"] = new[] { "alb", "sqi" },
+        ["hy"] = new[] { "arm", "hye" },
+        ["mk"] = new[] { "mac", "mkd" },
+        ["ms"] = new[] { "may", "msa" },
+        ["ka"] = new[] { "geo", "kat" },
+        ["cy"] = new[] { "wel", "cym" },
+        ["eu"] = new[] { "baq", "eus" },
+        ["my"] = new[] { "bur", "mya" },
+        ["bo"] = new[] { "tib", "bod" },
+
+        // Common ones with a single code (faster than the culture lookup, and always the same result).
+        ["hu"] = new[] { "hun" },
+        ["uk"] = new[] { "ukr" },
+        ["ar"] = new[] { "ara" },
+        ["he"] = new[] { "heb" },
+        ["hi"] = new[] { "hin" },
+        ["th"] = new[] { "tha" },
+        ["vi"] = new[] { "vie" },
+        ["id"] = new[] { "ind" },
+        ["bg"] = new[] { "bul" },
+        ["hr"] = new[] { "hrv" },
+        ["sr"] = new[] { "srp" },
+        ["sl"] = new[] { "slv" },
+        ["et"] = new[] { "est" },
+        ["lv"] = new[] { "lav" },
+        ["lt"] = new[] { "lit" },
+        ["ca"] = new[] { "cat" },
     };
 
     /// <summary>
@@ -95,6 +129,17 @@ public static class Lang
         if (two is not null && Known.TryGetValue(two, out var threes))
         {
             return threes[0];
+        }
+
+        if (two is not null)
+        {
+            try
+            {
+                return CultureInfo.GetCultureInfo(two).ThreeLetterISOLanguageName;
+            }
+            catch (CultureNotFoundException)
+            {
+            }
         }
 
         return code;

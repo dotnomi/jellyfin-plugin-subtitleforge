@@ -26,7 +26,6 @@ public class SyncTask : IScheduledTask
 {
     private const long MinCorrectionMs = 150;
 
-    private static readonly string[] OwnTags = { "SubDL", "OpenSubtitles", "Jimaku" };
 
     private readonly ILibraryManager _libraryManager;
     private readonly SyncService _sync;
@@ -85,14 +84,15 @@ public class SyncTask : IScheduledTask
                     continue;
                 }
 
-                var stem = Path.GetFileNameWithoutExtension(s.Path);
-                var tag = SubtitleFileWriter.TagOf(stem);
-                if (string.Equals(tag, OcrTask.FileTag, StringComparison.OrdinalIgnoreCase) || Whisper.WhisperService.IsWhisperTag(tag))
+                // OCR (OCR, OCR1 …), converted ASS ("Text"), translations and Whisper output take their timing from the
+                // file itself: nothing to correct.
+                var origin = SubtitleOrigin.Classify(video.Path, s.Path);
+                if (origin.Origin is "ocr" or "whisper" or "translation" || (origin.Origin == "plugin" && origin.Tag.EndsWith("Text", StringComparison.Ordinal)))
                 {
-                    continue; // OCR of embedded subtitles / Whisper output: timing comes from the file itself
+                    continue;
                 }
 
-                var own = OwnTags.Any(t => string.Equals(tag, t, StringComparison.OrdinalIgnoreCase));
+                var own = origin.Origin is "download" or "plugin";
                 if (!own && !config.SyncFixForeignSubtitles)
                 {
                     continue;
@@ -154,6 +154,13 @@ public class SyncTask : IScheduledTask
 
     private async Task<string> CheckAsync(Video video, string path, bool own, CancellationToken cancellationToken)
     {
+        var before = new FileInfo(path);
+        if (before.LinkTarget is not null)
+        {
+            return "empty";
+        }
+
+        var stamp = (before.LastWriteTimeUtc, before.Length);
         var cues = SubtitleContent.Parse(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), Path.GetFileName(path), null, null);
         if (cues is null || cues.Count < 3)
         {
@@ -186,9 +193,14 @@ public class SyncTask : IScheduledTask
             }
         }
 
-        var tmp = path + ".tmp";
-        await File.WriteAllTextAsync(tmp, Srt.Write(alignment.Cues), new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
-        File.Move(tmp, path, true);
+        // The analysis can take minutes: if the file was deleted, replaced or rejected meanwhile, leave it alone.
+        var now = new FileInfo(path);
+        if (!now.Exists || (now.LastWriteTimeUtc, now.Length) != stamp)
+        {
+            return "unsure";
+        }
+
+        await SubtitleFileWriter.WriteAtomicAsync(path, new UTF8Encoding(false).GetBytes(Srt.Write(alignment.Cues)), cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("SubtitleForge sync: corrected {Path} ({Alignment})", path, alignment);
         return "fixed";
     }

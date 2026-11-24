@@ -7,10 +7,9 @@
  * Rules marked !important here beat those (inline styles are not !important). */
 (function () {
     'use strict';
-    var s = window.__subtitleForgeStyle;
-    if (!s || !s.enabled) {
-        return;
-    }
+    var isWebkit = /AppleWebKit/.test(navigator.userAgent);
+    var current = window.__subtitleForgeStyle || null;
+    var targetLine = null;
 
     function hexToRgba(hex, alpha) {
         var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
@@ -20,7 +19,7 @@
         return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + alpha + ')';
     }
 
-    function textShadow() {
+    function textShadow(s) {
         var parts = [];
         var w = Number(s.outlineWidthPx) || 0;
         if (w > 0) {
@@ -36,53 +35,88 @@
         return parts.length ? parts.join(', ') : 'none';
     }
 
-    var bgAlpha = Math.max(0, Math.min(1, Number(s.backgroundOpacity) || 0));
-    var bg = bgAlpha > 0 ? hexToRgba(s.backgroundColor, bgAlpha) : 'transparent';
-    var text = [
-        'font-family:' + s.fontFamily + '!important',
-        'font-size:' + s.fontSizeVh + 'vh!important',
-        'font-weight:' + s.fontWeight + '!important',
-        'font-variant:normal!important',
-        'color:' + s.textColor + '!important',
-        'text-shadow:' + textShadow() + '!important',
-        'background-color:' + bg + '!important',
-        'line-height:1.25!important'
-    ];
+    function buildCss(s) {
+        var bgAlpha = Math.max(0, Math.min(1, Number(s.backgroundOpacity) || 0));
+        var bg = bgAlpha > 0 ? hexToRgba(s.backgroundColor, bgAlpha) : 'transparent';
+        var text = [
+            'font-family:' + s.fontFamily + '!important',
+            'font-size:' + s.fontSizeVh + 'vh!important',
+            'font-weight:' + s.fontWeight + '!important',
+            'font-variant:normal!important',
+            'color:' + s.textColor + '!important',
+            'text-shadow:' + textShadow(s) + '!important',
+            'background-color:' + bg + '!important',
+            'line-height:1.25!important'
+        ];
 
-    var css =
-        '.videoSubtitles{padding-bottom:' + s.bottomOffsetPercent + 'vh!important;}' +
-        '.videoSubtitlesInner,.videoSecondarySubtitlesInner{' + text.join(';') + ';' +
-        'margin-top:0!important;margin-bottom:0!important;' +
-        // One box around all lines: per-line boxes overlap where the lines meet and the overlap shows darker.
-        (bgAlpha > 0 ? 'display:inline-block!important;padding:0.1em 0.4em!important;border-radius:0.2em!important;' : '') + '}' +
-        'video.htmlvideoplayer::cue{' + text.join(';') + ';}';
+        var css =
+            '.videoSubtitles{padding-bottom:' + s.bottomOffsetPercent + 'vh!important;}' +
+            '.videoSubtitlesInner,.videoSecondarySubtitlesInner{' + text.join(';') + ';' +
+            'margin-top:0!important;margin-bottom:0!important;' +
+            // One box around all lines: per-line boxes overlap where the lines meet and the overlap shows darker.
+            (bgAlpha > 0 ? 'display:inline-block!important;padding:0.1em 0.4em!important;border-radius:0.2em!important;' : '') + '}' +
+            'video.htmlvideoplayer::cue{' + text.join(';') + ';}';
 
-    // Chromium/WebKit ignore cue.line for these tracks, but allow moving the whole native cue container.
-    var isWebkit = /AppleWebKit/.test(navigator.userAgent);
-    if (isWebkit) {
-        css += 'video.htmlvideoplayer::-webkit-media-text-track-container{transform:translateY(-' +
-            s.bottomOffsetPercent + 'vh)!important;}';
-        if (bgAlpha > 0) {
-            // Native cues: one box per cue (the display element) instead of one per line.
-            css += 'video.htmlvideoplayer::cue{background-color:transparent!important;}' +
-                'video.htmlvideoplayer::-webkit-media-text-track-display{background-color:' + bg + '!important;' +
-                'padding:0.1em 0.4em!important;border-radius:0.2em!important;box-sizing:border-box;}';
+        // Chromium/WebKit ignore cue.line for these tracks, but allow moving the whole native cue container.
+        if (isWebkit) {
+            css += 'video.htmlvideoplayer::-webkit-media-text-track-container{transform:translateY(-' +
+                s.bottomOffsetPercent + 'vh)!important;}';
+            if (bgAlpha > 0) {
+                // Native cues: one box per cue (the display element) instead of one per line.
+                css += 'video.htmlvideoplayer::cue{background-color:transparent!important;}' +
+                    'video.htmlvideoplayer::-webkit-media-text-track-display{background-color:' + bg + '!important;' +
+                    'padding:0.1em 0.4em!important;border-radius:0.2em!important;box-sizing:border-box;}';
+            }
         }
+        return css;
     }
 
-    var style = document.createElement('style');
-    style.id = 'subtitleforge-style';
-    style.textContent = css;
-    (document.head || document.documentElement).appendChild(style);
+    function apply(s) {
+        var style = document.getElementById('subtitleforge-style');
+        if (!s || !s.enabled) {
+            if (style) { style.remove(); }
+            targetLine = null;
+            return;
+        }
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'subtitleforge-style';
+            (document.head || document.documentElement).appendChild(style);
+        }
+        style.textContent = buildCss(s);
+        targetLine = Math.max(0, Math.min(100, 100 - (Number(s.bottomOffsetPercent) || 0)));
+    }
+
+    apply(current);
+
+    // The style is read when Jellyfin loads; the web and desktop app stay open for days. Fetch it again whenever
+    // a page is shown (at most every 15 s), so a saved change applies to the next playback without reloading.
+    var lastFetch = Date.now();
+    function refresh() {
+        if (Date.now() - lastFetch < 15000) {
+            return;
+        }
+        lastFetch = Date.now();
+        var c = window.ApiClient;
+        var url = c && c.getUrl ? c.getUrl('SubtitleForge/style.json') : '../SubtitleForge/style.json';
+        fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
+            if (s && JSON.stringify(s) !== JSON.stringify(current)) {
+                current = s;
+                window.__subtitleForgeStyle = s;
+                apply(s);
+            }
+        }, function () { });
+    }
+    document.addEventListener('viewshow', refresh);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { refresh(); } });
 
     // Firefox: native cues cannot be moved via CSS. Jellyfin creates the cues and calls
     // addCue(), so position every subtitle cue right before it is added (before it is ever rendered).
-    var targetLine = Math.max(0, Math.min(100, 100 - (Number(s.bottomOffsetPercent) || 0)));
     if (!isWebkit && window.TextTrack && TextTrack.prototype.addCue && !TextTrack.prototype.__sfPatched) {
         var originalAddCue = TextTrack.prototype.addCue;
         TextTrack.prototype.addCue = function (cue) {
             try {
-                if ((this.kind === 'subtitles' || this.kind === 'captions') && cue && typeof cue.snapToLines !== 'undefined') {
+                if (targetLine !== null && (this.kind === 'subtitles' || this.kind === 'captions') && cue && typeof cue.snapToLines !== 'undefined') {
                     cue.snapToLines = false;
                     cue.line = targetLine;
                     cue.lineAlign = 'end';
@@ -122,10 +156,12 @@
             noFiles: 'This title has no external subtitle files.', cues: '{0} cues', forced: 'forced', loading: 'Loading …',
             o_download: 'download', o_translation: 'translation', o_whisper: 'Whisper', o_ocr: 'OCR', o_plugin: 'SubtitleForge', o_foreign: 'not from SubtitleForge',
             other: 'Other match', otherBusy: 'Removed – searching for another match …', otherFailed: 'Could not reject.',
-            resync: 'Check sync', resyncBusy: 'Checking against the audio …', shifted: 'Shifted by {0}', shiftFailed: 'Could not shift.',
+            resync: 'Fix sync', resyncBusy: 'Aligning to the audio …', shifted: 'Shifted by {0}', shiftFailed: 'Could not shift.',
             shiftHint: 'Timing: earlier / later', current: 'playing now', trash: 'Recently deleted', restore: 'Restore', restored: 'restored',
             restoreFailed: 'Could not restore.', playerReload: 'Changed – the player reloads the subtitle.', playerTitle: 'Subtitle (SubtitleForge)',
             noSession: 'The current playback could not be found.',
+            source: 'Subtitle to translate', sourceAuto: 'Automatic ({0})', sourceAutoNone: 'Automatic', embedded: 'embedded',
+            noSource: 'No subtitle of this title can be translated into this language.',
             de: 'German', en: 'English', ja: 'Japanese', fr: 'French', es: 'Spanish', it: 'Italian'
         },
         de: {
@@ -145,10 +181,12 @@
             noFiles: 'Dieser Titel hat keine externen Untertitel-Dateien.', cues: '{0} Einträge', forced: 'forced', loading: 'Wird geladen …',
             o_download: 'Download', o_translation: 'Übersetzung', o_whisper: 'Whisper', o_ocr: 'OCR', o_plugin: 'SubtitleForge', o_foreign: 'nicht von SubtitleForge',
             other: 'Anderer Treffer', otherBusy: 'Entfernt – suche einen anderen Treffer …', otherFailed: 'Verwerfen fehlgeschlagen.',
-            resync: 'Sync prüfen', resyncBusy: 'Wird gegen die Tonspur geprüft …', shifted: 'Verschoben um {0}', shiftFailed: 'Verschieben fehlgeschlagen.',
+            resync: 'Sync korrigieren', resyncBusy: 'Wird an die Tonspur angepasst …', shifted: 'Verschoben um {0}', shiftFailed: 'Verschieben fehlgeschlagen.',
             shiftHint: 'Timing: früher / später', current: 'läuft gerade', trash: 'Zuletzt gelöscht', restore: 'Wiederherstellen', restored: 'wiederhergestellt',
             restoreFailed: 'Wiederherstellen fehlgeschlagen.', playerReload: 'Geändert – der Player lädt den Untertitel neu.', playerTitle: 'Untertitel (SubtitleForge)',
             noSession: 'Die laufende Wiedergabe wurde nicht gefunden.',
+            source: 'Zu übersetzender Untertitel', sourceAuto: 'Automatisch ({0})', sourceAutoNone: 'Automatisch', embedded: 'eingebettet',
+            noSource: 'Kein Untertitel dieses Titels lässt sich in diese Sprache übersetzen.',
             de: 'Deutsch', en: 'Englisch', ja: 'Japanisch', fr: 'Französisch', es: 'Spanisch', it: 'Italienisch'
         }
     };
@@ -196,15 +234,20 @@
         }, function () { });
     }
 
+    // Remembered per signed-in user: someone else may sign in without the page being reloaded.
+    var adminUser = null;
     function checkAdmin() {
-        if (isAdmin !== null) {
-            return Promise.resolve(isAdmin);
-        }
-        if (!window.ApiClient || !window.ApiClient.getCurrentUser) {
+        var c = window.ApiClient;
+        if (!c || !c.getCurrentUser) {
             return Promise.resolve(false);
         }
-        return window.ApiClient.getCurrentUser().then(function (u) {
+        var uid = c.getCurrentUserId ? c.getCurrentUserId() : null;
+        if (isAdmin !== null && uid && uid === adminUser) {
+            return Promise.resolve(isAdmin);
+        }
+        return c.getCurrentUser().then(function (u) {
             isAdmin = !!(u && u.Policy && u.Policy.IsAdministrator);
+            adminUser = u ? u.Id : null;
             return isAdmin;
         }, function () { return false; });
     }
@@ -280,6 +323,7 @@
                         '<p class="secondaryText sfScope"></p>' +
                         '<div class="selectContainer"><select is="emby-select" class="sfAction"></select></div>' +
                         '<div class="selectContainer sfLangRow"><select is="emby-select" class="sfLang"></select></div>' +
+                        '<div class="selectContainer sfSourceRow"><select is="emby-select" class="sfSource"></select></div>' +
                         '<div class="selectContainer sfAudioRow"><select is="emby-select" class="sfAudio"></select></div>' +
                         '<div class="checkboxContainer sfReplaceRow"><label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="sfReplace" checked /><span class="sfReplaceText"></span></label></div>' +
                         '<div class="fieldDescription sfHint" style="margin:.4em 0 .6em"></div>' +
@@ -296,6 +340,7 @@
             dlg.querySelector('.sfAction').setAttribute('label', t('action'));
             dlg.querySelector('.sfLang').setAttribute('label', t('target'));
             dlg.querySelector('.sfAudio').setAttribute('label', t('fromAudio'));
+            dlg.querySelector('.sfSource').setAttribute('label', t('source'));
             dlg.querySelector('.sfReplaceText').textContent = t('replace');
             dlg.querySelector('.sfOk span').textContent = t('schedule');
 
@@ -328,6 +373,10 @@
                 var a = action.value;
                 dlg.querySelector('.sfLangRow').style.display = a === 'translate' || a === 'whisper' ? '' : 'none';
                 dlg.querySelector('.sfAudioRow').style.display = a === 'whisper' ? '' : 'none';
+                dlg.querySelector('.sfSourceRow').style.display = a === 'translate' && single ? '' : 'none';
+                if (a === 'translate' && single) {
+                    loadSources();
+                }
                 dlg.querySelector('.sfReplaceRow').style.display = a === 'whisper' ? '' : 'none';
                 dlg.querySelector('.sfOkRow').style.display = a === 'manage' ? 'none' : '';
                 files.style.display = a === 'manage' ? '' : 'none';
@@ -337,6 +386,25 @@
                     loadFiles();
                 }
             }
+
+            // Translation source: "automatic" (the plugin's best pick, named) plus every translatable subtitle.
+            var source = dlg.querySelector('.sfSource');
+            var sourceSeq = 0;
+            function loadSources() {
+                var seq = ++sourceSeq;
+                var keep = source.value;
+                api('GET', 'SubtitleForge/Items/' + info.ids[0] + '/TranslationSources?language=' + encodeURIComponent(lang.value)).then(function (list) {
+                    if (seq !== sourceSeq) { return; }
+                    source.textContent = '';
+                    list = list || [];
+                    function label(c) { return (c.title || '?') + ' · ' + langName(c.language) + (c.external ? '' : ' · ' + t('embedded')); }
+                    addOption(source, '', list.length ? fmt('sourceAuto', label(list[0])) : t('sourceAutoNone'));
+                    list.forEach(function (c) { addOption(source, String(c.index), label(c)); });
+                    source.value = list.some(function (c) { return String(c.index) === keep; }) ? keep : '';
+                    status.textContent = list.length ? '' : t('noSource');
+                }, function () { });
+            }
+            lang.addEventListener('change', function () { if (action.value === 'translate' && single) { loadSources(); } });
 
             function loadFiles() {
                 files.textContent = t('loading');
@@ -449,10 +517,12 @@
                             note.textContent = fmt('shifted', seconds(total));
                             busy(false);
                             if (r && r.copy) {
-                                // A file from elsewhere stays untouched: further shifts go to the corrected copy.
+                                // A file from elsewhere stays untouched: further shifts go to the corrected copy (the
+                                // server finds it even before Jellyfin lists it), so the row now stands for the copy.
                                 f.file = r.file;
                                 playing = false;
-                                setTimeout(loadFiles, 1500);
+                                var title = bar.parentNode.querySelector('.listItemBodyText');
+                                if (title) { title.textContent = r.file; }
                             } else {
                                 changed();
                             }
@@ -464,11 +534,13 @@
                 return bar;
             }
 
+            var trashSeq = 0;
             function loadTrash() {
+                var seq = ++trashSeq;
                 var box = files.querySelector('.sfTrash');
                 if (box) { box.remove(); }
                 api('GET', 'SubtitleForge/Items/' + info.ids[0] + '/Trash').then(function (list) {
-                    if (!list || !list.length || files.querySelector('.sfTrash')) { return; }
+                    if (seq !== trashSeq || !list || !list.length || files.querySelector('.sfTrash')) { return; }
                     box = el('div', { 'class': 'sfTrash' });
                     box.style.cssText = 'margin-top:1em;';
                     box.appendChild(el('h3', { 'class': 'sectionTitle' }, t('trash')));
@@ -531,7 +603,7 @@
                         return 'SubtitleForge/Items/' + id + '/Search';
                     }
                     if (action.value === 'translate') {
-                        return 'SubtitleForge/Items/' + id + '/Translate?language=' + lang.value;
+                        return 'SubtitleForge/Items/' + id + '/Translate?language=' + lang.value + (single && source.value !== '' ? '&sourceIndex=' + encodeURIComponent(source.value) : '');
                     }
                     var p = 'SubtitleForge/Items/' + id + '/Whisper?language=' + lang.value + '&replace=' + replace.checked;
                     if (audio.value.charAt(0) === 'i') { p += '&audioIndex=' + audio.value.substring(1); }

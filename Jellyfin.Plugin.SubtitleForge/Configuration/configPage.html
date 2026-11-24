@@ -291,7 +291,7 @@
                     </div>
 
                     <div><button is="emby-button" type="submit" class="raised button-submit block emby-button"><span data-t="save">Save</span></button></div>
-                    <p data-t="saveHelp">After saving, reload the web client (F5) so the new style applies.</p>
+                    <p data-t="saveHelp">The new style applies from the next playback in Jellyfin Web and Desktop – no reload needed.</p>
                 </form>
             </div>
         </div>
@@ -385,7 +385,7 @@
                     hMaintenance: 'Papierkorb und Sicherung', trashDays: 'Gelöschte Untertitel aufbewahren (Tage, 0 = sofort löschen)',
                     backupHelp: 'Export speichert alle Einstellungen als Datei – ohne API-Keys, Passwörter und Webhook. Import übernimmt die Einstellungen aus so einer Datei; deine Keys bleiben, wie sie sind. Danach speichern.',
                     export: 'Einstellungen exportieren', import: 'Einstellungen importieren',
-                    notifyTest: 'Testnachricht senden', save: 'Speichern', saveHelp: 'Nach dem Speichern den Web-Client neu laden (F5), damit der neue Stil greift.',
+                    notifyTest: 'Testnachricht senden', save: 'Speichern', saveHelp: 'Der neue Stil gilt in Jellyfin Web und Desktop ab der nächsten Wiedergabe – ohne Neuladen.',
                     // texts built in script
                     filter: 'Filtern (Titel) …', loading: 'Wird geladen …', none: 'Keine Einträge.', queueLoading: 'Warteschlange wird geladen …',
                     selectedN: '{0} ausgewählt', langsFrom: 'Sprachen aus', search: 'Neu suchen', translate: 'Übersetzen', subtitles: 'Untertitel ansehen',
@@ -1044,7 +1044,13 @@
                             config[f] = numbers.indexOf(f) >= 0 ? num(f, Number(config[f]) || 0) : v;
                         });
                         checks.forEach(function (f) { config[f] = page.querySelector('#' + f).checked; });
-                        config.Libraries = Array.prototype.map.call(page.querySelectorAll('.sfLib:checked'), function (cb) { return cb.getAttribute('data-id'); });
+                        // Only when the library list has loaded; ids of libraries not shown in the list are kept.
+                        var libBoxes = page.querySelectorAll('.sfLib');
+                        if (libBoxes.length) {
+                            var shown = Array.prototype.map.call(libBoxes, function (cb) { return cb.getAttribute('data-id'); });
+                            var hidden = (config.Libraries || []).filter(function (x) { return shown.indexOf(x.replace(/-/g, '').toLowerCase()) < 0; });
+                            config.Libraries = hidden.concat(Array.prototype.map.call(page.querySelectorAll('.sfLib:checked'), function (cb) { return cb.getAttribute('data-id'); }));
+                        }
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });

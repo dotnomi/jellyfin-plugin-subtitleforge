@@ -29,8 +29,9 @@ public static partial class SubtitleContent
     /// <param name="fileNameHint">File name of the payload, if known.</param>
     /// <param name="season">Wanted season (to pick from packs).</param>
     /// <param name="episode">Wanted episode (to pick from packs).</param>
+    /// <param name="language">Language of the subtitle, if known (picks the legacy code page for files that are not UTF-8).</param>
     /// <returns>Cues, or null if nothing usable.</returns>
-    public static List<SubtitleCue>? Parse(byte[] payload, string? fileNameHint, int? season, int? episode)
+    public static List<SubtitleCue>? Parse(byte[] payload, string? fileNameHint, int? season, int? episode, string? language = null)
     {
         // Archives come from third parties: only entry names and declared sizes are looked at first, then just the
         // chosen entry is decompressed, with a hard size limit (protects against zip bombs).
@@ -79,7 +80,7 @@ public static partial class SubtitleContent
             return null; // a pack without the wanted episode
         }
 
-        var text = Decode(chosen.Data);
+        var text = Decode(chosen.Data, language);
         var cues = chosen.Name.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) || text.Contains("-->", StringComparison.Ordinal)
             ? Srt.Parse(text)
             : ParseAss(text);
@@ -88,11 +89,13 @@ public static partial class SubtitleContent
     }
 
     /// <summary>
-    /// Decodes subtitle bytes: BOM, strict UTF-8, otherwise Windows-1252 (typical for German/English subs).
+    /// Decodes subtitle bytes: BOM, strict UTF-8, otherwise the usual legacy code page of the language
+    /// (Windows-1252 for German/English and unknown languages, 1251 for Cyrillic, 1250 for Central Europe, Shift-JIS …).
     /// </summary>
     /// <param name="data">Bytes.</param>
+    /// <param name="language">Language, if known.</param>
     /// <returns>Text.</returns>
-    public static string Decode(byte[] data)
+    public static string Decode(byte[] data, string? language = null)
     {
         if (data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
         {
@@ -115,9 +118,31 @@ public static partial class SubtitleContent
         }
         catch (DecoderFallbackException)
         {
-            return Encoding.GetEncoding(1252).GetString(data);
+            return Encoding.GetEncoding(LegacyCodePage(language)).GetString(data);
         }
     }
+
+    /// <summary>
+    /// The Windows code page old subtitle files of a language are usually written in.
+    /// </summary>
+    /// <param name="language">Language code.</param>
+    /// <returns>Code page.</returns>
+    internal static int LegacyCodePage(string? language) => Common.Lang.ToTwoLetter(language) switch
+    {
+        "ru" or "uk" or "bg" or "sr" or "mk" or "be" => 1251,
+        "pl" or "cs" or "sk" or "hu" or "hr" or "sl" or "ro" or "bs" => 1250,
+        "el" => 1253,
+        "tr" => 1254,
+        "he" => 1255,
+        "ar" or "fa" => 1256,
+        "et" or "lv" or "lt" => 1257,
+        "vi" => 1258,
+        "th" => 874,
+        "ja" => 932,
+        "zh" => 936,
+        "ko" => 949,
+        _ => 1252,
+    };
 
     /// <summary>
     /// Parses ASS/SSA dialogue events. Vector drawings are dropped.

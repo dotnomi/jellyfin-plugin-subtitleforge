@@ -101,6 +101,14 @@ public static class SubtitleAligner
     /// <returns>Result.</returns>
     public static AlignmentResult Align(IReadOnlyList<SubtitleCue> cues, SpeechSignal speech, bool allowSplits = true)
     {
+        if (speech.Length > 0)
+        {
+            // A cue far beyond the end of the audio (junk like "99:00:00") would size the FFT buffers by its time
+            // (gigabytes): such cues cannot match anything and are left out.
+            var limitMs = ((long)speech.Length * SpeechSignal.FrameMs * 6 / 5) + 600_000;
+            cues = cues.Where(c => c.StartMs <= limitMs && c.EndMs <= limitMs + 60_000).ToList();
+        }
+
         var result = new AlignmentResult { Cues = cues.ToList() };
         if (cues.Count == 0 || speech.Length == 0)
         {

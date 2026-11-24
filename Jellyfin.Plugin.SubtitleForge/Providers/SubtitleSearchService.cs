@@ -98,7 +98,17 @@ public class SubtitleSearchService
     /// <param name="query">Query.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Ranked candidates (best first).</returns>
-    public async Task<List<SubtitleCandidate>> SearchAsync(SubtitleQuery query, CancellationToken cancellationToken)
+    public Task<List<SubtitleCandidate>> SearchAsync(SubtitleQuery query, CancellationToken cancellationToken) =>
+        SearchAsync(query, null, cancellationToken);
+
+    /// <summary>
+    /// Searches all configured sources and ranks the result, and tells which sources could not be asked.
+    /// </summary>
+    /// <param name="query">Query.</param>
+    /// <param name="failedSources">Receives the names of sources that failed (timeout, server error, bad key).</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Ranked candidates (best first).</returns>
+    public async Task<List<SubtitleCandidate>> SearchAsync(SubtitleQuery query, ICollection<string>? failedSources, CancellationToken cancellationToken)
     {
         var all = new List<SubtitleCandidate>();
         foreach (var source in _sources.Where(s => s.IsConfigured && !_quota.IsPaused(s.Name)))
@@ -114,9 +124,11 @@ public class SubtitleSearchService
                 _quota.Pause(source.Name, ex.ResetUtc);
                 _logger.LogWarning("SubtitleForge: {Source}: {Message} – paused until {Until}", source.Name, ex.Message, _quota.PausedUntil(source.Name));
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning(ex, "SubtitleForge: search on {Source} failed", source.Name);
+                // A timeout of the source's HTTP client is a failed search, not a cancelled run.
+                _logger.LogWarning("SubtitleForge: search on {Source} failed: {Message}", source.Name, ex.Message);
+                failedSources?.Add(source.Name);
             }
         }
 

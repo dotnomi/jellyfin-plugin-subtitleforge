@@ -102,7 +102,7 @@ public sealed class SpeechAnalyzer : IDisposable
     public SpeechSignal? TryGetCached(Video video)
     {
         var audio = PickAudioStream(video);
-        return audio is null ? null : SpeechSignal.Load(CachePath(video, audio.Index));
+        return audio is null ? null : SpeechSignal.Load(CachePath(video, audio));
     }
 
     /// <summary>
@@ -126,7 +126,7 @@ public sealed class SpeechAnalyzer : IDisposable
     /// <returns>Signal.</returns>
     public async Task<SpeechSignal?> GetSignalAsync(Video video, MediaStream audio, CancellationToken cancellationToken)
     {
-        var cache = CachePath(video, audio.Index);
+        var cache = CachePath(video, audio);
         var cached = SpeechSignal.Load(cache);
         if (cached is not null)
         {
@@ -207,7 +207,7 @@ public sealed class SpeechAnalyzer : IDisposable
             }
         }
 
-        var cache = CachePath(video, audio.Index);
+        var cache = CachePath(video, audio);
         var signal = SpeechSignal.Load(cache);
         if (signal is null)
         {
@@ -241,7 +241,8 @@ public sealed class SpeechAnalyzer : IDisposable
         };
 
         // Dialogue lives in the centre channel of surround mixes; music and effects in the others would mask it.
-        var mix = audio.Channels >= 3
+        // Only real surround layouts (5.1 and up) are sure to have a centre channel; 2.1, 3.0 or 4.0 may not.
+        var mix = audio.Channels >= 5
             ? new[] { "-af", "pan=mono|c0=FC" }
             : new[] { "-ac", "1" };
         var args = new List<string> { "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file", "-i", video.Path, "-map", StreamMap.Specifier(video.GetMediaStreams(), audio), "-vn", "-sn", "-dn" };
@@ -258,10 +259,14 @@ public sealed class SpeechAnalyzer : IDisposable
     /// <inheritdoc />
     public void Dispose() => _gate.Dispose();
 
-    private string CachePath(Video video, int audioIndex)
+    private string CachePath(Video video, MediaStream audio)
     {
+        // Jellyfin's stream index shifts when external subtitles are added: key on the position among the
+        // file's own audio tracks instead, so a saved subtitle does not invalidate the analysis.
+        var audioIndex = video.GetMediaStreams().Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal)
+            .OrderBy(s => s.Index).ToList().FindIndex(s => s.Index == audio.Index);
         var info = new FileInfo(video.Path);
-        var key = string.Join('|', video.Path, info.Exists ? info.Length : 0, info.Exists ? info.LastWriteTimeUtc.Ticks : 0, audioIndex, "v2");
+        var key = string.Join('|', video.Path, info.Exists ? info.Length : 0, info.Exists ? info.LastWriteTimeUtc.Ticks : 0, audioIndex, "v3");
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)), 0, 12).ToLowerInvariant();
         return Path.Combine(_appPaths.CachePath, "subtitleforge", "speech", hash[..2], hash + ".sig");
     }

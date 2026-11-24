@@ -65,7 +65,16 @@ public partial class SubtitleTranslator
     /// <param name="streams">Streams of the video.</param>
     /// <param name="target">Target language (ISO 639-1).</param>
     /// <returns>Source stream and its language, or null.</returns>
-    public static (MediaStream Stream, string Language)? PickSource(IReadOnlyList<MediaStream> streams, string target)
+    public static (MediaStream Stream, string Language)? PickSource(IReadOnlyList<MediaStream> streams, string target) =>
+        Candidates(streams, target).Select(x => ((MediaStream, string)?)x).FirstOrDefault();
+
+    /// <summary>
+    /// All subtitles that can be translated into the target language, best first (see <see cref="PickSource"/>).
+    /// </summary>
+    /// <param name="streams">Streams of the video.</param>
+    /// <param name="target">Target language (ISO 639-1).</param>
+    /// <returns>Candidates.</returns>
+    public static IReadOnlyList<(MediaStream Stream, string Language)> Candidates(IReadOnlyList<MediaStream> streams, string target)
     {
         return streams
             .Where(s => s.Type == MediaStreamType.Subtitle && !s.IsForced)
@@ -78,8 +87,8 @@ public partial class SubtitleTranslator
             .OrderBy(x => !x.Stream.IsExternal ? 0 : SubtitleFileWriter.TagOf(Path.GetFileNameWithoutExtension(x.Stream.Path!)) == Ocr.OcrTask.FileTag ? 1 : 2)
             .ThenBy(x => TranslationModels.Route(x.Language!, target)!.Count)
             .ThenByDescending(x => x.Language == "de" || x.Language == "en")
-            .Select(x => ((MediaStream, string)?)(x.Stream, x.Language!))
-            .FirstOrDefault();
+            .Select(x => (x.Stream, x.Language!))
+            .ToList();
     }
 
     /// <summary>
@@ -89,8 +98,9 @@ public partial class SubtitleTranslator
     /// <param name="target">Target language (ISO 639-1).</param>
     /// <param name="progress">Progress 0..1.</param>
     /// <param name="cancellationToken">Cancellation.</param>
+    /// <param name="sourceIndex">Stream index of the subtitle to translate (null = the best one).</param>
     /// <returns>Outcome.</returns>
-    public async Task<WhisperOutcome> TranslateAsync(Video video, string target, IProgress<double>? progress, CancellationToken cancellationToken)
+    public async Task<WhisperOutcome> TranslateAsync(Video video, string target, IProgress<double>? progress, CancellationToken cancellationToken, int? sourceIndex = null)
     {
         var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
         if (!config.TranslationEnabled)
@@ -99,7 +109,16 @@ public partial class SubtitleTranslator
         }
 
         var streams = video.GetMediaStreams();
-        if (PickSource(streams, target) is not { } source)
+        var candidates = Candidates(streams, target);
+        (MediaStream Stream, string Language)? chosen = sourceIndex is { } wanted
+            ? candidates.Where(c => c.Stream.Index == wanted).Select(c => ((MediaStream, string)?)c).FirstOrDefault()
+            : candidates.Select(c => ((MediaStream, string)?)c).FirstOrDefault();
+        if (sourceIndex is not null && chosen is null)
+        {
+            return new WhisperOutcome(false, Loc.T("The chosen subtitle is no longer available or cannot be translated", "Der gewählte Untertitel ist nicht mehr vorhanden oder nicht übersetzbar"));
+        }
+
+        if (chosen is not { } source)
         {
             return new WhisperOutcome(false, Loc.German ? $"kein übersetzbarer Untertitel für {target} vorhanden" : $"no translatable subtitle for {target} available");
         }
@@ -149,7 +168,7 @@ public partial class SubtitleTranslator
         if (stream.IsExternal)
         {
             var bytes = await File.ReadAllBytesAsync(stream.Path!, cancellationToken).ConfigureAwait(false);
-            return SubtitleContent.Parse(bytes, Path.GetFileName(stream.Path), null, null) ?? new List<SubtitleCue>();
+            return SubtitleContent.Parse(bytes, Path.GetFileName(stream.Path), null, null, stream.Language) ?? new List<SubtitleCue>();
         }
 
         var ass = stream.Codec is "ass" or "ssa";

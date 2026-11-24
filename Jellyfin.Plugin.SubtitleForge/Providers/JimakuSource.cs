@@ -157,7 +157,12 @@ public partial class JimakuSource : ISubtitleSource
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning("Jimaku request failed: HTTP {Status} {Body}", (int)response.StatusCode, body.Length > 200 ? body[..200] : body);
-            return null;
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            throw new HttpRequestException("Jimaku: HTTP " + (int)response.StatusCode, null, response.StatusCode);
         }
 
         return JsonDocument.Parse(body);

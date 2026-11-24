@@ -170,4 +170,48 @@ public sealed class FeatureTests4 : IDisposable
         Assert.DoesNotContain("Show S01E16", body, StringComparison.Ordinal);
         Assert.Contains("5 more", body, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("rum", "ro")]
+    [InlineData("ron", "ro")]
+    [InlineData("gre", "el")]
+    [InlineData("slo", "sk")]
+    [InlineData("ice", "is")]
+    [InlineData("per", "fa")]
+    [InlineData("ger", "de")]
+    public void Lang_KnowsBothIso6392Codes(string code, string two)
+    {
+        Assert.Equal(two, Lang.ToTwoLetter(code));
+        Assert.True(Lang.Same(code, two));
+    }
+
+    [Fact]
+    public void Lang_FileNamesUseBibliographicCode() => Assert.Equal("rum", Lang.ToThreeLetter("ro"));
+
+    [Fact]
+    public void Decode_UsesLegacyCodePageOfTheLanguage()
+    {
+        var cyrillic = System.Text.Encoding.GetEncoding(1251).GetBytes("1\n00:00:01,000 --> 00:00:02,000\nПривет\n");
+        Assert.Contains("Привет", SubtitleContent.Decode(cyrillic, "ru"), StringComparison.Ordinal);
+        var german = System.Text.Encoding.GetEncoding(1252).GetBytes("Grüße");
+        Assert.Equal("Grüße", SubtitleContent.Decode(german, "de"));
+        Assert.Equal("Grüße", SubtitleContent.Decode(german));
+    }
+
+    [Fact]
+    public void Aligner_IgnoresCuesFarBeyondTheAudio()
+    {
+        // 10 minutes of audio, one junk cue at 99 h: must not size buffers by that time.
+        var frames = new byte[60_000];
+        var cues = new List<SubtitleCue>
+        {
+            new(10_000, 12_000, "a"),
+            new(20_000, 22_000, "b"),
+            new(99L * 3_600_000, (99L * 3_600_000) + 1000, "junk"),
+        };
+        var before = GC.GetTotalAllocatedBytes(true);
+        var result = Jellyfin.Plugin.SubtitleForge.Sync.SubtitleAligner.Align(cues, new Jellyfin.Plugin.SubtitleForge.Sync.SpeechSignal(frames));
+        Assert.True(GC.GetTotalAllocatedBytes(true) - before < 400_000_000);
+        Assert.DoesNotContain(result.Cues, c => c.Text == "junk");
+    }
 }

@@ -34,6 +34,19 @@ public class StyleController : ControllerBase
     }
 
     /// <summary>
+    /// Gets the current style (the web client fetches it again before playback, so saved changes apply without a reload).
+    /// </summary>
+    /// <returns>JSON.</returns>
+    [HttpGet("style.json")]
+    [AllowAnonymous]
+    [Produces("application/json")]
+    public ContentResult GetStyle()
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Content(StyleSettingsJson(), "application/json");
+    }
+
+    /// <summary>
     /// Serializes the style part of the configuration for the client.
     /// </summary>
     /// <returns>JSON.</returns>

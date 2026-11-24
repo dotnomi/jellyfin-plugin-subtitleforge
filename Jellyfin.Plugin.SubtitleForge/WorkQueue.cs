@@ -42,7 +42,7 @@ public enum WorkKind
 /// <param name="AudioIndex">Audio stream (Whisper).</param>
 /// <param name="DueUtc">Earliest start.</param>
 /// <param name="ReplaceDownload">Whisper: replace SubtitleForge's own downloaded subtitle of that language.</param>
-public sealed record WorkItem(Guid ItemId, WorkKind Kind, string? Language, int? AudioIndex, DateTime DueUtc, bool ReplaceDownload = false);
+public sealed record WorkItem(Guid ItemId, WorkKind Kind, string? Language, int? AudioIndex, DateTime DueUtc, bool ReplaceDownload = false, int? SourceIndex = null);
 
 /// <summary>
 /// Background queue: processes newly added items a few minutes after the library scan, and runs manual actions.
@@ -189,7 +189,9 @@ public sealed class WorkQueue : IHostedService, IDisposable
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
                 // New items only start once no further item was added for the configured delay (library scan finished).
-                var quiet = DateTime.UtcNow - _lastNewItemUtc >= NewItemDelay();
+                // Outside the time window automatic jobs wait in the queue; manual ones still run.
+                var quiet = DateTime.UtcNow - _lastNewItemUtc >= NewItemDelay()
+                    && Throttle.InWindow(DateTime.Now, Plugin.Instance?.Configuration ?? new PluginConfiguration());
                 var due = _pending.Values
                     .Where(w => w.DueUtc <= DateTime.UtcNow && (w.Kind != WorkKind.NewItem || quiet))
                     .OrderBy(w => w.Kind == WorkKind.NewItem ? 1 : 0)
@@ -273,7 +275,7 @@ public sealed class WorkQueue : IHostedService, IDisposable
                 message = $"{video.Name}: {outcome.Message}";
                 break;
             case WorkKind.Translate:
-                var translated = await _processor.TranslateAsync(video, job.Language ?? "en", token, new SyncProgress(p => CurrentProgress = p)).ConfigureAwait(false);
+                var translated = await _processor.TranslateAsync(video, job.Language ?? "en", token, new SyncProgress(p => CurrentProgress = p), job.SourceIndex).ConfigureAwait(false);
                 message = $"{video.Name}: {translated.Message}";
                 break;
             default:

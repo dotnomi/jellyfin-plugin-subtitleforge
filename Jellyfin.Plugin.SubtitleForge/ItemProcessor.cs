@@ -53,6 +53,9 @@ public sealed class ItemProcessor : IDisposable
     /// <summary>State: a fitting subtitle may exist but the source's daily limit was reached; retried next run.</summary>
     public const string WaitingForQuota = "waiting-quota";
 
+    /// <summary>State: a source did not answer (timeout, server error) – try again on the next run, not in a week.</summary>
+    public const string SourceError = "source-error";
+
     /// <summary>Outcome for a subtitle the user deleted: not created again automatically.</summary>
     public const string DeletedByUser = "deleted";
 
@@ -218,7 +221,7 @@ public sealed class ItemProcessor : IDisposable
                 audio = tracks[position];
             }
 
-            var outcome = await _whisper.GenerateAsync(video, language, audio, progress, cancellationToken).ConfigureAwait(false);
+            var outcome = await GenerateSafeAsync(video, language, audio, progress, cancellationToken).ConfigureAwait(false);
             _state.Set(video.Id, "whisper:" + language, outcome.Success ? "whisper" : "whisper-failed", outcome.Message);
             if (outcome.Success && replaceDownload)
             {
@@ -259,6 +262,20 @@ public sealed class ItemProcessor : IDisposable
     /// <param name="codec">Codec name.</param>
     /// <returns>True if supported.</returns>
     public static bool IsOcrCodec(string? codec) => PgsCodecs.Contains(codec ?? string.Empty) || VobSubCodecs.Contains(codec ?? string.Empty);
+
+    // A failing Whisper run (helper crash, ffmpeg error, model download) fails this one item, not the whole run.
+    private async Task<WhisperOutcome> GenerateSafeAsync(Video video, string language, MediaStream? audio, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _whisper.GenerateAsync(video, language, audio, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "SubtitleForge: Whisper failed for {Path}", video.Path);
+            return new WhisperOutcome(false, Loc.T("Whisper failed: ", "Whisper fehlgeschlagen: ") + ex.Message);
+        }
+    }
 
     private static bool IsBadCandidate(Exception ex) =>
         ex is InvalidDataException or System.Net.Http.HttpRequestException or NotSupportedException or FormatException
@@ -306,7 +323,13 @@ public sealed class ItemProcessor : IDisposable
                 && o.IsForced && Lang.Same(o.Language, s.Language));
             var savedAsForcedEarlier = !s.IsForced && !otherForcedStream
                 && SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, true, tag));
-            if (!ownStemExists && !savedAsForcedEarlier && !UserDeleted(video, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag)))
+            // What an earlier run did with this stream: saved (maybe under another name, e.g. as forced) or failed.
+            var stemKey = SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag);
+            var earlier = _state.Get(video.Id, "ocr:" + stemKey);
+            var doneEarlier = earlier?.Outcome == "saved" && earlier.Detail is { Length: > 0 } savedStem
+                && (SubtitleFileWriter.Exists(video, savedStem) || UserDeleted(video, savedStem));
+            var failedRecently = earlier?.Outcome == "failed" && earlier.LastTriedUtc > DateTime.UtcNow.AddDays(-30);
+            if (!ownStemExists && !savedAsForcedEarlier && !doneEarlier && !failedRecently && !UserDeleted(video, stemKey))
             {
                 jobs.Add((s, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag), s.IsForced));
             }
@@ -319,7 +342,18 @@ public sealed class ItemProcessor : IDisposable
 
         var tempDir = Path.Combine(_appPaths.TempDirectory, "subtitleforge");
         Directory.CreateDirectory(tempDir);
-        using var recognizer = new PaddleRecognizer(config.OcrThreads);
+        PaddleRecognizer recognizer;
+        try
+        {
+            recognizer = new PaddleRecognizer(config.OcrThreads);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "SubtitleForge OCR: the text recognizer could not be loaded");
+            return 0;
+        }
+
+        using var recognizerScope = recognizer;
         var results = new List<(MediaStream Stream, string Stem, bool Forced, OcrResult Result, long Ms)>();
         foreach (var job in jobs)
         {
@@ -348,18 +382,21 @@ public sealed class ItemProcessor : IDisposable
                 if (result.Cues.Count == 0)
                 {
                     _logger.LogWarning("SubtitleForge OCR: no text recognized in {Path} stream {Index}", video.Path, job.Stream.Index);
+                    _state.Set(video.Id, "ocr:" + job.Stem, "failed", Loc.T("no text recognized", "kein Text erkannt"));
                     continue;
                 }
 
                 results.Add((job.Stream, job.Stem, job.Forced || result.AllForced, result, sw.ElapsedMilliseconds));
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
             catch (Exception ex)
             {
+                // Remembered, so a stream that cannot be read is not extracted and OCR'd again every night.
                 _logger.LogError(ex, "SubtitleForge OCR failed for {Path} stream {Index}", video.Path, job.Stream.Index);
+                _state.Set(video.Id, "ocr:" + job.Stem, "failed", ex.Message);
             }
             finally
             {
@@ -393,7 +430,18 @@ public sealed class ItemProcessor : IDisposable
                 stem = SubtitleFileWriter.BuildStem(video, Lang.FileToken(r.Stream.Language), false, OcrTask.FileTag);
             }
 
-            var path = await _writer.SaveAsync(video, stem, Srt.Write(r.Result.Cues), cancellationToken).ConfigureAwait(false);
+            string path;
+            try
+            {
+                path = await _writer.SaveAsync(video, stem, Srt.Write(r.Result.Cues), cancellationToken).ConfigureAwait(false);
+            }
+            catch (AggregateException ex)
+            {
+                _logger.LogError(ex, "SubtitleForge OCR: cannot save {Stem}", stem);
+                continue;
+            }
+
+            _state.Set(video.Id, "ocr:" + r.Stem, "saved", stem);
             written++;
             _logger.LogInformation(
                 "SubtitleForge OCR: {Path} – {Cues} cues, mean confidence {Conf:P1}, {Low} low-confidence lines, {Ms} ms",
@@ -463,7 +511,7 @@ public sealed class ItemProcessor : IDisposable
                     }
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -498,7 +546,7 @@ public sealed class ItemProcessor : IDisposable
             }
 
             var state = _state.Get(video.Id, statePrefix + lang);
-            if (!force && state is not null && state.Outcome != WaitingForQuota
+            if (!force && state is not null && state.Outcome is not (WaitingForQuota or SourceError)
                 && (state.Outcome == DeletedByUser || state.LastTriedUtc > DateTime.UtcNow.AddDays(-Math.Max(1, config.DownloadRetryDays))))
             {
                 continue;
@@ -537,11 +585,12 @@ public sealed class ItemProcessor : IDisposable
         try
         {
             var query = SubtitleSearchService.BuildQuery(video, missing.Union(forcedWanted).ToList());
-            var ranked = await _search.SearchAsync(query, cancellationToken).ConfigureAwait(false);
+            var failedSources = new List<string>();
+            var ranked = await _search.SearchAsync(query, failedSources, cancellationToken).ConfigureAwait(false);
             var saved = 0;
             foreach (var lang in missing)
             {
-                saved += await DownloadLanguageAsync(video, query, ranked, lang, config, cancellationToken).ConfigureAwait(false);
+                saved += await DownloadLanguageAsync(video, query, ranked, lang, config, cancellationToken, failedSources).ConfigureAwait(false);
             }
 
             foreach (var lang in forcedWanted)
@@ -553,7 +602,7 @@ public sealed class ItemProcessor : IDisposable
             await Task.Delay(500, cancellationToken).ConfigureAwait(false);
             return saved;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -608,9 +657,9 @@ public sealed class ItemProcessor : IDisposable
         try
         {
             var (data, fileName) = await _search.GetSource(candidate.Source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
-            cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode);
+            cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode, candidate.Language);
         }
-        catch (Exception ex) when (IsBadCandidate(ex))
+        catch (Exception ex) when (IsBadCandidate(ex) || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             _logger.LogWarning("SubtitleForge: skipped forced {Source} {Release}: {Message}", candidate.Source, candidate.DisplayName, ex.Message);
             cues = null;
@@ -628,7 +677,7 @@ public sealed class ItemProcessor : IDisposable
         return 1;
     }
 
-    private async Task<int> DownloadLanguageAsync(Video video, SubtitleQuery query, List<SubtitleCandidate> ranked, string lang, PluginConfiguration config, CancellationToken cancellationToken)
+    private async Task<int> DownloadLanguageAsync(Video video, SubtitleQuery query, List<SubtitleCandidate> ranked, string lang, PluginConfiguration config, CancellationToken cancellationToken, IReadOnlyCollection<string>? failedSources = null)
     {
         var candidates = ranked
             .Where(c => c.Language == lang && !c.MachineTranslated)
@@ -646,6 +695,12 @@ public sealed class ItemProcessor : IDisposable
         {
             // A paused source was not even asked – keep the item open for the next run.
             _state.Set(video.Id, lang, WaitingForQuota, Loc.T("Not all sources queried (daily limit) – next attempt on the next run", "Nicht alle Quellen befragt (Tageslimit) – nächster Versuch beim nächsten Lauf"));
+            return 0;
+        }
+
+        if (full.Count == 0 && failedSources is { Count: > 0 })
+        {
+            _state.Set(video.Id, lang, SourceError, (Loc.German ? "Quelle nicht erreichbar: " : "Source not reachable: ") + string.Join(", ", failedSources));
             return 0;
         }
 
@@ -681,7 +736,7 @@ public sealed class ItemProcessor : IDisposable
             try
             {
                 var (data, fileName) = await _search.GetSource(candidate.Source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
-                var cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode);
+                var cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode, candidate.Language);
                 if (cues is null)
                 {
                     continue;
@@ -726,9 +781,10 @@ public sealed class ItemProcessor : IDisposable
                 {
                     _logger.LogInformation("SubtitleForge: {Release} is a forced subtitle (covers little dialogue)", candidate.DisplayName);
                     var hasForced = video.GetMediaStreams().Any(s => s.Type == MediaStreamType.Subtitle && s.IsForced && Lang.Same(s.Language, lang));
-                    if (!hasForced)
+                    var forcedStem = SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(lang), true, candidate.Source);
+                    if (!hasForced && !UserDeleted(video, forcedStem) && _state.Get(video.Id, "forced:" + lang)?.Outcome != DeletedByUser)
                     {
-                        await _writer.SaveAsync(video, SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(lang), true, candidate.Source), Srt.Write(cues), cancellationToken).ConfigureAwait(false);
+                        await _writer.SaveAsync(video, forcedStem, Srt.Write(cues), cancellationToken).ConfigureAwait(false);
                     }
 
                     continue;
@@ -747,7 +803,7 @@ public sealed class ItemProcessor : IDisposable
                 quotaBlocked = true;
                 _logger.LogWarning("SubtitleForge: {Message} – {Source} paused until {Until}", ex.Message, candidate.Source, _search.Quota.PausedUntil(candidate.Source));
             }
-            catch (Exception ex) when (IsBadCandidate(ex))
+            catch (Exception ex) when (IsBadCandidate(ex) || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 // One broken, oversized or disallowed download must not stop the other candidates.
                 _logger.LogWarning("SubtitleForge: skipped {Source} {Release}: {Message}", candidate.Source, candidate.DisplayName, ex.Message);
@@ -777,13 +833,13 @@ public sealed class ItemProcessor : IDisposable
     /// <param name="cancellationToken">Cancellation.</param>
     /// <param name="progress">Progress 0..1.</param>
     /// <returns>Outcome.</returns>
-    public async Task<WhisperOutcome> TranslateAsync(Video video, string language, CancellationToken cancellationToken, IProgress<double>? progress = null)
+    public async Task<WhisperOutcome> TranslateAsync(Video video, string language, CancellationToken cancellationToken, IProgress<double>? progress = null, int? sourceIndex = null)
     {
         await _throttle.WaitForPlaybackAsync(cancellationToken).ConfigureAwait(false);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var outcome = await _translator.TranslateAsync(video, language, progress, cancellationToken).ConfigureAwait(false);
+            var outcome = await _translator.TranslateAsync(video, language, progress, cancellationToken, sourceIndex).ConfigureAwait(false);
             _state.Set(video.Id, "translate:" + language, outcome.Success ? "saved" : "failed", outcome.Message);
             return outcome;
         }
@@ -799,7 +855,7 @@ public sealed class ItemProcessor : IDisposable
         foreach (var lang in languages)
         {
             if (HasLanguage(video.GetMediaStreams(), lang) || _state.Get(video.Id, lang)?.Outcome == "saved"
-                || _state.Get(video.Id, lang)?.Outcome == WaitingForQuota)
+                || _state.Get(video.Id, lang)?.Outcome is WaitingForQuota or SourceError or DeletedByUser)
             {
                 continue; // present, just downloaded, or a source was not asked yet (quota) – try downloading again first
             }
@@ -820,7 +876,7 @@ public sealed class ItemProcessor : IDisposable
                 _state.Set(video.Id, "translate:" + lang, outcome.Success ? "saved" : "failed", outcome.Message);
                 written += outcome.Success ? 1 : 0;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -841,10 +897,10 @@ public sealed class ItemProcessor : IDisposable
         foreach (var lang in languages)
         {
             // Streams are refreshed asynchronously after saving, so also check what this run just downloaded.
-            if (HasLanguage(video.GetMediaStreams(), lang) || _state.Get(video.Id, lang)?.Outcome == "saved"
+            if (HasLanguage(video.GetMediaStreams(), lang) || _state.Get(video.Id, lang)?.Outcome is "saved" or DeletedByUser
                 || _state.Get(video.Id, "translate:" + lang)?.Outcome == "saved")
             {
-                continue;
+                continue; // present, just made, or the user deleted the download on purpose
             }
 
             // Whisper is expensive: one automatic attempt per item and language (unless forced manually).
@@ -858,7 +914,7 @@ public sealed class ItemProcessor : IDisposable
                 continue;
             }
 
-            var outcome = await _whisper.GenerateAsync(video, lang, null, null, cancellationToken).ConfigureAwait(false);
+            var outcome = await GenerateSafeAsync(video, lang, null, null, cancellationToken).ConfigureAwait(false);
             _state.Set(video.Id, "whisper:" + lang, outcome.Success ? "whisper" : "whisper-failed", outcome.Message);
             if (outcome.Success)
             {

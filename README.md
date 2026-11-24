@@ -58,7 +58,7 @@ consistent style in the web client.
 - **Audio check:** every download is aligned to the speech in the audio track (Silero VAD).
   - Fixes offset, frame rate and cut differences.
   - A subtitle that belongs to a different cut is rejected instead of being saved.
-- **Translation of existing subtitles**, offline: e.g. the official German track into English.
+- **Translation of existing subtitles**, offline: e.g. the official German track into English. You can pick which subtitle is translated, or let the plugin choose.
   - The timing stays exact, and there are no speech-recognition errors.
   - Pairs: German↔English, Japanese↔English, Japanese↔German via English.
 - **Whisper:** generates subtitles from any audio track into any of the supported languages.
