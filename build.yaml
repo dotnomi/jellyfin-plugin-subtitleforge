@@ -1,7 +1,7 @@
 ---
 name: "SubtitleForge"
 guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
-version: "0.5.2.0"
+version: "0.5.3.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Uniform subtitle style, OCR for image subtitles, verified downloads, sync fixing, offline translation, Whisper"
@@ -38,6 +38,8 @@ artifacts:
 - "whisperhost/linux-x64/sf-whisper"
 - "whisperhost/linux-arm64/sf-whisper"
 changelog: >
+  0.5.3: Whisper subtitles and earlier translations can be chosen as the source of a translation (never automatically).
+  The subtitle background box fits the text in Chrome/Edge/Jellyfin Desktop instead of spanning the full width.
   0.5.2: Saved style applies to the next playback without reloading the web client. Choose which subtitle to translate.
   Fixes from a full review: a slow or failing source no longer aborts the nightly run or blocks the title for a week
   (retried next run); Whisper/OCR errors fail only that title; unreadable image tracks are not OCR'd every night;

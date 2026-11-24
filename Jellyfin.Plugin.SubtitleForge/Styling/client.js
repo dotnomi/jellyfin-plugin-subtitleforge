@@ -63,9 +63,12 @@
                 s.bottomOffsetPercent + 'vh)!important;}';
             if (bgAlpha > 0) {
                 // Native cues: one box per cue (the display element) instead of one per line.
+                // The display box spans the cue's full width: shrink it to the text and centre it.
                 css += 'video.htmlvideoplayer::cue{background-color:transparent!important;}' +
                     'video.htmlvideoplayer::-webkit-media-text-track-display{background-color:' + bg + '!important;' +
-                    'padding:0.1em 0.4em!important;border-radius:0.2em!important;box-sizing:border-box;}';
+                    'padding:0.1em 0.4em!important;border-radius:0.2em!important;box-sizing:border-box;' +
+                    'width:fit-content!important;max-width:92%!important;left:0!important;right:0!important;' +
+                    'margin-left:auto!important;margin-right:auto!important;}';
             }
         }
         return css;
@@ -398,9 +401,12 @@
                     source.textContent = '';
                     list = list || [];
                     function label(c) { return (c.title || '?') + ' · ' + langName(c.language) + (c.external ? '' : ' · ' + t('embedded')); }
-                    addOption(source, '', list.length ? fmt('sourceAuto', label(list[0])) : t('sourceAutoNone'));
+                    // "Automatic" never picks machine-made subtitles (Whisper, translations); they can be chosen by hand.
+                    var auto = list.filter(function (c) { return !c.machine; })[0];
+                    addOption(source, '', auto ? fmt('sourceAuto', label(auto)) : t('sourceAutoNone'));
                     list.forEach(function (c) { addOption(source, String(c.index), label(c)); });
-                    source.value = list.some(function (c) { return String(c.index) === keep; }) ? keep : '';
+                    source.value = list.some(function (c) { return String(c.index) === keep; }) ? keep
+                        : (!auto && list.length ? String(list[0].index) : '');
                     status.textContent = list.length ? '' : t('noSource');
                 }, function () { });
             }

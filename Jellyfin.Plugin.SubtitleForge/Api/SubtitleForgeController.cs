@@ -202,7 +202,7 @@ public class SubtitleForgeController : ControllerBase
 
         // A chosen source only makes sense for one movie/episode, and must be one of its translatable subtitles.
         if (sourceIndex is not null && (item is not Video single
-            || Translation.SubtitleTranslator.Candidates(single.GetMediaStreams(), lang).All(c => c.Stream.Index != sourceIndex)))
+            || Translation.SubtitleTranslator.Candidates(single.GetMediaStreams(), lang, true).All(c => c.Stream.Index != sourceIndex)))
         {
             return BadRequest(Loc.T("This subtitle cannot be translated into the chosen language.", "Dieser Untertitel kann nicht in die gewählte Sprache übersetzt werden."));
         }
@@ -211,7 +211,7 @@ public class SubtitleForgeController : ControllerBase
         var queued = 0;
         foreach (var v in LibraryItems.VideosUnder(_libraryManager, item))
         {
-            if (Translation.SubtitleTranslator.PickSource(v.GetMediaStreams(), lang) is null)
+            if (sourceIndex is null && Translation.SubtitleTranslator.PickSource(v.GetMediaStreams(), lang) is null)
             {
                 continue;
             }
@@ -240,9 +240,11 @@ public class SubtitleForgeController : ControllerBase
             return NotFound();
         }
 
-        return Ok(Translation.SubtitleTranslator.Candidates(video.GetMediaStreams(), lang).Select(c => new
+        // Whisper output and earlier translations come last and are never the automatic choice.
+        return Ok(Translation.SubtitleTranslator.Candidates(video.GetMediaStreams(), lang, true).Select(c => new
         {
             index = c.Stream.Index,
+            machine = c.Stream.IsExternal && Translation.SubtitleTranslator.IsMachineMade(c.Stream.Path!),
             language = c.Language,
             external = c.Stream.IsExternal,
             title = c.Stream.IsExternal ? System.IO.Path.GetFileName(c.Stream.Path) : (c.Stream.DisplayTitle ?? c.Stream.Title ?? c.Stream.Codec),

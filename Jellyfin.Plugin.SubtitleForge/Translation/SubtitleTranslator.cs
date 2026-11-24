@@ -58,6 +58,18 @@ public partial class SubtitleTranslator
         tag.Contains("[AI] Übersetzt", StringComparison.OrdinalIgnoreCase) || tag.Contains("[AI] Translated", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Whether a subtitle file was made by Whisper or is an earlier translation.
+    /// </summary>
+    /// <param name="path">File path.</param>
+    /// <returns>True for machine-made files.</returns>
+    public static bool IsMachineMade(string path)
+    {
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var tag = SubtitleFileWriter.TagOf(stem);
+        return WhisperService.IsWhisperTag(stem) || WhisperService.IsWhisperTag(tag) || IsTranslationTag(stem) || IsTranslationTag(tag);
+    }
+
+    /// <summary>
     /// Picks the best source subtitle for a target language: official embedded text first, then OCR of the disc
     /// subtitle, then other files; never machine-made ones (Whisper, earlier translations). Direct language pairs
     /// (de↔en, ja↔en) win over the detour via English.
@@ -73,8 +85,9 @@ public partial class SubtitleTranslator
     /// </summary>
     /// <param name="streams">Streams of the video.</param>
     /// <param name="target">Target language (ISO 639-1).</param>
+    /// <param name="includeMachineMade">Also Whisper output and earlier translations (only when the user picks one).</param>
     /// <returns>Candidates.</returns>
-    public static IReadOnlyList<(MediaStream Stream, string Language)> Candidates(IReadOnlyList<MediaStream> streams, string target)
+    public static IReadOnlyList<(MediaStream Stream, string Language)> Candidates(IReadOnlyList<MediaStream> streams, string target, bool includeMachineMade = false)
     {
         return streams
             .Where(s => s.Type == MediaStreamType.Subtitle && !s.IsForced)
@@ -82,9 +95,10 @@ public partial class SubtitleTranslator
             .Where(x => x.Language is not null && x.Language != target && TranslationModels.Route(x.Language, target) is not null)
             .Where(x => x.Stream.IsExternal
                 ? x.Stream.Path is { } p && (p.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".ass", StringComparison.OrdinalIgnoreCase))
-                    && !WhisperService.IsWhisperTag(Path.GetFileNameWithoutExtension(p)) && !IsTranslationTag(Path.GetFileNameWithoutExtension(p))
+                    && (includeMachineMade || !IsMachineMade(p))
                 : TextCodecs.Contains(x.Stream.Codec ?? string.Empty))
-            .OrderBy(x => !x.Stream.IsExternal ? 0 : SubtitleFileWriter.TagOf(Path.GetFileNameWithoutExtension(x.Stream.Path!)) == Ocr.OcrTask.FileTag ? 1 : 2)
+            .OrderBy(x => x.Stream.IsExternal && IsMachineMade(x.Stream.Path!))
+            .ThenBy(x => !x.Stream.IsExternal ? 0 : SubtitleFileWriter.TagOf(Path.GetFileNameWithoutExtension(x.Stream.Path!)) == Ocr.OcrTask.FileTag ? 1 : 2)
             .ThenBy(x => TranslationModels.Route(x.Language!, target)!.Count)
             .ThenByDescending(x => x.Language == "de" || x.Language == "en")
             .Select(x => (x.Stream, x.Language!))
@@ -109,7 +123,7 @@ public partial class SubtitleTranslator
         }
 
         var streams = video.GetMediaStreams();
-        var candidates = Candidates(streams, target);
+        var candidates = Candidates(streams, target, sourceIndex is not null);
         (MediaStream Stream, string Language)? chosen = sourceIndex is { } wanted
             ? candidates.Where(c => c.Stream.Index == wanted).Select(c => ((MediaStream, string)?)c).FirstOrDefault()
             : candidates.Select(c => ((MediaStream, string)?)c).FirstOrDefault();
