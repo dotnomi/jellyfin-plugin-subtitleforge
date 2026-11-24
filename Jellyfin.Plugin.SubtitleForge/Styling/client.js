@@ -124,70 +124,99 @@
 
     var LANGS = { de: 'Deutsch', en: 'Englisch', ja: 'Japanisch', fr: 'Französisch', es: 'Spanisch', it: 'Italienisch' };
 
+    // Built from Jellyfin's own dialog/form markup (formDialog, emby-select, emby-checkbox, raised button-submit),
+    // so it takes the look of whatever theme is active (Dark, Light, custom CSS like Abyss).
     function openDialog(itemId) {
         api('GET', 'SubtitleForge/Items/' + itemId + '/Info').then(function (info) {
             if (!info || !info.videos) {
                 return;
             }
-            var overlay = el('div');
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;';
-            var box = el('div');
-            box.style.cssText = 'background:#202020;color:#eee;padding:1.4em 1.6em;border-radius:.5em;min-width:min(26em,92vw);max-width:92vw;font-size:.95em;box-shadow:0 0 2em rgba(0,0,0,.6);';
-            box.appendChild(el('h3', { style: 'margin-top:0' }, 'Untertitel – ' + info.name));
-            box.appendChild(el('div', { style: 'opacity:.75;margin-bottom:1em' }, info.kind === 'video' ? 'Einzelner Titel' : info.videos + ' Filme/Folgen werden eingeplant'));
 
-            function row(label, control) {
-                var r = el('label', { style: 'display:flex;gap:.8em;align-items:center;margin:.5em 0;justify-content:space-between' });
-                r.appendChild(el('span', {}, label));
-                r.appendChild(control);
-                box.appendChild(r);
-                return r;
+            var backdrop = el('div', { 'class': 'dialogBackdrop dialogBackdropOpened' });
+            var container = el('div', { 'class': 'dialogContainer' });
+            var dlg = el('div', { 'class': 'focuscontainer dialog formDialog centeredDialog opened sfDialog' });
+            dlg.style.cssText = 'animation:scaleup 180ms ease-out normal both;max-width:min(32em,94vw);width:32em;';
+            dlg.innerHTML =
+                '<div class="formDialogHeader">' +
+                    '<button is="paper-icon-button-light" class="btnCancel autoSize paper-icon-button-light" title="Schließen"><span class="material-icons arrow_back" aria-hidden="true"></span></button>' +
+                    '<h3 class="formDialogHeaderTitle"></h3>' +
+                '</div>' +
+                '<div class="formDialogContent smoothScrollY" style="margin-bottom:0">' +
+                    '<div class="dialogContentInner dialog-content-centered" style="padding-bottom:1.5em">' +
+                        '<p class="secondaryText sfScope"></p>' +
+                        '<div class="selectContainer"><select is="emby-select" class="sfAction" label="Aktion"></select></div>' +
+                        '<div class="selectContainer sfLangRow"><select is="emby-select" class="sfLang" label="Zielsprache"></select></div>' +
+                        '<div class="selectContainer sfAudioRow"><select is="emby-select" class="sfAudio" label="Aus Tonspur"></select></div>' +
+                        '<div class="checkboxContainer sfReplaceRow"><label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="sfReplace" checked /><span>Heruntergeladenen Untertitel ersetzen</span></label></div>' +
+                        '<div class="fieldDescription sfHint" style="margin:.4em 0 .6em"></div>' +
+                        '<div class="fieldDescription sfStatus" style="font-weight:bold"></div>' +
+                        '<div style="margin-top:1.2em">' +
+                            '<button is="emby-button" type="button" class="raised button-submit block btnSubmit sfOk"><span>Einplanen</span></button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            dlg.querySelector('.formDialogHeaderTitle').textContent = 'Untertitel – ' + info.name;
+            dlg.querySelector('.sfScope').textContent = info.kind === 'video' ? 'Einzelner Titel' : info.videos + ' Filme/Folgen werden eingeplant';
+
+            function addOption(select, value, text) {
+                var o = document.createElement('option');
+                o.value = value;
+                o.textContent = text;
+                select.appendChild(o);
             }
-            var selectCss = 'background:#333;color:#eee;border:1px solid #555;padding:.3em;border-radius:.3em;min-width:12em';
-            var action = el('select', { style: selectCss });
-            action.appendChild(el('option', { value: 'search' }, 'Neu suchen / herunterladen'));
-            action.appendChild(el('option', { value: 'translate' }, 'Aus vorhandenem Untertitel übersetzen'));
-            action.appendChild(el('option', { value: 'whisper' }, 'Mit Whisper (KI) erzeugen'));
-            row('Aktion', action);
 
-            var lang = el('select', { style: selectCss });
-            var langs = (info.languages || []).concat(Object.keys(LANGS)).filter(function (v, i, a) { return a.indexOf(v) === i; });
-            langs.forEach(function (l) { lang.appendChild(el('option', { value: l }, (LANGS[l] || l.toUpperCase()))); });
-            var langRow = row('Zielsprache', lang);
+            var action = dlg.querySelector('.sfAction');
+            addOption(action, 'search', 'Neu suchen / herunterladen');
+            addOption(action, 'translate', 'Aus vorhandenem Untertitel übersetzen');
+            addOption(action, 'whisper', 'Mit Whisper (KI) aus der Tonspur erzeugen');
 
-            var audio = el('select', { style: selectCss });
-            audio.appendChild(el('option', { value: '' }, 'automatisch'));
+            var lang = dlg.querySelector('.sfLang');
+            (info.languages || []).concat(Object.keys(LANGS)).filter(function (v, i, a) { return a.indexOf(v) === i; })
+                .forEach(function (l) { addOption(lang, l, LANGS[l] || l.toUpperCase()); });
+
+            var audio = dlg.querySelector('.sfAudio');
+            addOption(audio, '', 'automatisch');
             if (info.kind === 'video') {
-                (info.audioTracks || []).forEach(function (a) { audio.appendChild(el('option', { value: 'i' + a.Index }, a.Title || a.Language || ('Spur ' + (a.Index + 1)))); });
+                (info.audioTracks || []).forEach(function (a) { addOption(audio, 'i' + a.Index, a.Title || a.Language || ('Spur ' + (a.Index + 1))); });
             } else {
-                (info.audioLanguages || []).forEach(function (l) { audio.appendChild(el('option', { value: 'l' + l }, 'Tonspur ' + (LANGS[l] || l.toUpperCase()))); });
+                (info.audioLanguages || []).forEach(function (l) { addOption(audio, 'l' + l, 'Tonspur ' + (LANGS[l] || l.toUpperCase())); });
             }
-            var audioRow = row('Aus Tonspur', audio);
 
-            var replace = el('input', { type: 'checkbox' });
-            replace.checked = true;
-            var replaceRow = row('Heruntergeladenen Untertitel ersetzen', replace);
-
+            var replace = dlg.querySelector('.sfReplace');
+            var hint = dlg.querySelector('.sfHint');
+            var hints = {
+                search: 'Sucht bei SubDL, OpenSubtitles und Jimaku und prüft Treffer gegen die Tonspur.',
+                translate: 'Übersetzt einen vorhandenen Untertitel einer anderen Sprache offline – Timing bleibt exakt.',
+                whisper: 'Erkennt die Sprache der Tonspur per KI. Dauert je nach Hardware einige Minuten pro Folge.'
+            };
             function update() {
                 var w = action.value === 'whisper';
-                langRow.style.display = action.value === 'search' ? 'none' : 'flex';
-                audioRow.style.display = replaceRow.style.display = w ? 'flex' : 'none';
+                dlg.querySelector('.sfLangRow').style.display = action.value === 'search' ? 'none' : '';
+                dlg.querySelector('.sfAudioRow').style.display = w ? '' : 'none';
+                dlg.querySelector('.sfReplaceRow').style.display = w ? '' : 'none';
+                hint.textContent = hints[action.value];
             }
             action.addEventListener('change', update);
             update();
 
-            var buttons = el('div', { style: 'display:flex;gap:.6em;justify-content:flex-end;margin-top:1.2em' });
-            var cancel = el('button', { type: 'button', style: 'padding:.5em 1em;background:#444;color:#eee;border:0;border-radius:.3em;cursor:pointer' }, 'Abbrechen');
-            var ok = el('button', { type: 'button', style: 'padding:.5em 1em;background:#00a4dc;color:#fff;border:0;border-radius:.3em;cursor:pointer' }, 'Einplanen');
-            buttons.appendChild(cancel);
-            buttons.appendChild(ok);
-            box.appendChild(buttons);
-            var status = el('div', { style: 'margin-top:.8em;opacity:.85' });
-            box.appendChild(status);
+            function close() {
+                container.remove();
+                backdrop.remove();
+                document.removeEventListener('keydown', onKey, true);
+                window.removeEventListener('hashchange', close);
+                document.removeEventListener('viewbeforehide', close);
+            }
+            window.addEventListener('hashchange', close);
+            document.addEventListener('viewbeforehide', close);
+            function onKey(e) {
+                if (e.key === 'Escape') { e.stopPropagation(); close(); }
+            }
+            document.addEventListener('keydown', onKey, true);
+            dlg.querySelector('.btnCancel').addEventListener('click', close);
+            container.addEventListener('click', function (e) { if (e.target === container) { close(); } });
 
-            function close() { overlay.remove(); }
-            cancel.addEventListener('click', close);
-            overlay.addEventListener('click', function (e) { if (e.target === overlay) { close(); } });
+            var ok = dlg.querySelector('.sfOk');
+            var status = dlg.querySelector('.sfStatus');
             ok.addEventListener('click', function () {
                 var path;
                 if (action.value === 'search') {
@@ -201,13 +230,18 @@
                 }
                 ok.disabled = true;
                 api('POST', path).then(function (r) {
-                    status.textContent = (r && r.queued !== undefined ? r.queued : 1) + ' Auftrag/Aufträge eingeplant. Fortschritt: Dashboard → Plugins → SubtitleForge.';
-                    setTimeout(close, 2500);
+                    var n = r && r.queued !== undefined ? r.queued : 1;
+                    status.textContent = n === 0
+                        ? 'Nichts eingeplant – kein passender Untertitel bzw. keine passende Tonspur vorhanden.'
+                        : n + (n === 1 ? ' Auftrag' : ' Aufträge') + ' eingeplant. Fortschritt: Dashboard → SubtitleForge.';
+                    setTimeout(close, n === 0 ? 3500 : 2200);
                 }, function () { status.textContent = 'Fehler beim Einplanen.'; ok.disabled = false; });
             });
 
-            overlay.appendChild(box);
-            document.body.appendChild(overlay);
+            container.appendChild(dlg);
+            document.body.appendChild(backdrop);
+            document.body.appendChild(container);
+            action.focus();
         });
     }
 

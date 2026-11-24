@@ -1,77 +1,220 @@
-# SubtitleForge – Jellyfin-Plugin für Untertitel
+# SubtitleForge for Jellyfin
 
-Eigenständiges Plugin für Jellyfin 12.x (.NET 10). Es braucht keine externen Dienste wie Sonarr, Radarr oder Bazarr und läuft auf der CPU (also auch auf NAS-Geräten wie dem Intel N100), Whisper optional auf der GPU per Vulkan.
+**Good subtitles for your whole library, without Bazarr, Sonarr or Radarr.**
+SubtitleForge is a self-contained Jellyfin plugin. It converts Blu-ray image subtitles to text, downloads missing
+subtitles and checks them against the audio, fixes subtitles that are out of sync, translates existing subtitles offline,
+and as a last resort generates them from the audio with Whisper (CPU, or GPU via Vulkan). All subtitles get one
+consistent style in the web client.
 
-## Funktionen
+> [!WARNING]
+> **This project was created with generative AI.** The code, the tests and this documentation were written in
+> collaboration with an AI assistant (Anthropic Claude) and reviewed and tested on real libraries by a human. It works
+> well for its author, but it has not been audited. Read the code before you trust it with your library, keep backups,
+> and report problems. There is no warranty (see [License](#license)).
 
-| Funktion | Wie |
+> [!NOTE]
+> The plugin's user interface is currently **German only**. Translations are welcome.
+
+![Subtitle dialog on an item page (Abyss theme)](docs/images/dialog-abyss.jpg)
+
+## Contents
+
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Getting started](#getting-started)
+- [How it decides what to do](#how-it-decides-what-to-do)
+- [GPU acceleration](#gpu-acceleration)
+- [Privacy: what leaves your server](#privacy-what-leaves-your-server)
+- [Building and tests](#building-and-tests)
+- [License](#license)
+
+## Features
+
+**Uniform look**
+- One subtitle style for the whole server: font, size, colour, outline, background and position. The style is enforced
+  in Jellyfin Web and Jellyfin Desktop, without changing any files.
+- Every subtitle the plugin writes is clean SRT, without font or colour tags. That way the app settings on Android TV,
+  Fire TV and phones apply evenly too.
+- Optional: removes non-speech captions like `[SCREAMING]`, `(gunshots)` or `JOHN:`, and optionally song lyrics.
+- Optional: converts embedded ASS/SSA subtitles (anime typesetting) into clean SRT, so they follow the style.
+
+**Getting subtitles**
+- **OCR:** converts Blu-ray PGS image subtitles to text. Uses its own PGS decoder and PaddleOCR (PP-OCRv5), runs fully
+  offline, typically 98–99 % character confidence.
+- **Downloads** from SubDL, OpenSubtitles.com and Jimaku (anime).
+  - Candidates are ranked by release group, source, resolution and episode.
+  - OpenSubtitles hash matches are preferred.
+  - Daily limits are respected: the library is worked through over several nights.
+- **Audio check:** every download is aligned to the speech in the audio track (Silero VAD).
+  - Fixes offset, frame rate and cut differences.
+  - A subtitle that belongs to a different cut is rejected instead of being saved.
+- **Translation of existing subtitles**, offline: e.g. the official German track into English.
+  - The timing stays exact, and there are no speech-recognition errors.
+  - Pairs: German↔English, Japanese↔English, Japanese↔German via English.
+- **Whisper:** generates subtitles from any audio track into any of the supported languages.
+  - Runs on demand, or automatically as a last resort when nothing was found for X days.
+  - Results are labelled `[AI] Whisper` / `[AI] Übersetzt`, so machine-made text is always recognisable.
+- **Forced subtitles** (signs, songs, foreign-language parts) for dubbed versions: derived from ASS tracks or downloaded
+  as "foreign parts only". Unflagged forced tracks are detected.
+
+**Control**
+- A **"Subtitles" button** (CC icon) on every movie, episode, season and series page, for administrators. From there
+  you can search, translate or start Whisper, also for a whole season or series at once.
+- An **overview page** with its own entry in the dashboard sidebar. It shows:
+  - per title, which languages exist, where they came from, and why something is missing
+  - a preview of every subtitle file, with a *doesn't fit* button (the download is blocked and searched again)
+  - a **job list** with progress, remaining time per job and in total
+  - **statistics:** coverage per library and language
+  - a **sync report:** checks all external subtitles against the audio without changing anything, then fixes them on request. Files the plugin did not make get a corrected copy, the original stays untouched.
+- Choose which **libraries** the plugin works on. Set languages per series or movie with a tag (`subs:de,en`).
+- Respects viewers: heavy work **pauses while someone is watching** (a running Whisper job is suspended and resumed).
+  Automatic work can be limited to a **time window**, e.g. 1–7 am.
+- A **summary** after every run goes to Jellyfin's activity log. Optionally it is also sent via webhook (ntfy, Gotify,
+  Discord or plain JSON).
+- **Crash-safe:** Whisper runs in a separate process.
+  - If a GPU driver crashes, Jellyfin keeps running and the job is redone on the CPU.
+  - A short GPU self-test after startup shows driver problems right away.
+- **Never touches your files:** the plugin only deletes or overwrites files it created itself.
+
+## Screenshots
+
+| | |
 |---|---|
-| **Einheitlicher Untertitel-Stil** | Schrift, Größe, Farbe, Rand, Hintergrund und Position werden vom Server vorgegeben und im Web-Client und in Jellyfin Desktop erzwungen (Skript-Injection in `index.html`, ohne Dateien zu ändern). Für Android TV und Handy-Apps schreibt das Plugin bereinigte SRT-Dateien, damit dort die App-Einstellungen einheitlich greifen. |
-| **Bild-Untertitel → Text (OCR)** | Geplante Aufgabe. Eingebettete PGS-Untertitel (Blu-ray) werden per eigenem PGS-Decoder und PaddleOCR (PP-OCRv5 Latin, ONNX) einmalig in `Film.deu.OCR.srt` umgewandelt. |
-| **Fehlende Untertitel herunterladen** | Geplante Aufgabe sowie Eintrag „SubtitleForge“ in Jellyfins Untertitelsuche. Quellen sind SubDL, OpenSubtitles.com und Jimaku (Anime, Japanisch/Englisch, eigener API-Key) (OpenSubtitles automatisch nur bei Hash-Treffer, um das Tageslimit zu schonen). Die Kandidaten werden danach bewertet, wie gut sie zum Release passen (Gruppe, Quelle, Dienst, Auflösung, Fassung, Folge). |
-| **Sprachen pro Film/Serie/Bibliothek** | Tag `subs:de,ja` im Metadaten-Editor (an der Serie gilt er für alle Folgen, `subs:none` schaltet ab) → Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ → Plugin-Standard. |
-| **Nur gesprochener Text** | Entfernt Geräusch-/Musikbeschreibungen ([SCREAMING], (Schüsse), auch über zwei Zeilen) und Sprechernamen („JOHN:“) aus allen Untertiteln, die das Plugin schreibt; Liedtexte (♪) optional. |
-| **Ganze Bibliothek über Tage** | Ist das Tageslimit einer Quelle (z.B. 20 OpenSubtitles-Downloads) erreicht, pausiert das Plugin nur diese Quelle bis zum Reset; betroffene Einträge bleiben offen und werden in der nächsten Nacht fortgesetzt, bis die Bibliothek durch ist. |
-| **Forced-Erkennung** | Forced-Untertitel (nur Schilder/Fremdsprache) werden am Release-Namen und an der geringen Abdeckung der Dialoge erkannt und als `.forced` gespeichert, nie als voller Untertitel. |
-| **GPU-Beschleunigung (Vulkan)** | Whisper rechnet auf AMD-, Intel- (z.B. Arc A310, N100-iGPU) und NVIDIA-GPUs, sobald eine GPU unter `/dev/dri` sichtbar ist und `libvulkan1` + `mesa-vulkan-drivers` installiert sind; sonst automatisch CPU. Mesas Software-Vulkan (llvmpipe) wird bewusst nie verwendet. Status auf der Einstellungsseite. |
-| **Spracherkennung (Whisper)** | Ergebnis heißt in Jellyfin „[AI] Whisper“ (bzw. „[AI] Whisper ja-de“ bei Übersetzung), damit maschinell erzeugter Text erkennbar ist. Erzeugt Untertitel aus einer Tonspur (CPU, whisper.cpp): manuell pro Film/Folge mit frei wählbarer Tonspur und Zielsprache. Automatisch als letzter Ausweg nur für Serien/Filme mit dem Tag `whisper:auto` (oder global eingeschaltet; `whisper:off` schließt aus). Optional ersetzt das Ergebnis einen heruntergeladenen Untertitel, der dann nie wieder geladen wird. |
-| **Offline-Übersetzung** | Weicht die Tonspur-Sprache von der Zielsprache ab, wird transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Ohne passende Tonspur nimmt das Plugin automatisch die am besten erkannte (z.B. deutschen Dub vor Japanisch). Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen. |
-| **Button auf der Detailseite** | Administratoren sehen auf der Seite eines Films, einer Folge, Staffel oder Serie den Button „Untertitel“ (CC-Symbol): neu suchen oder Whisper starten – für eine Staffel/Serie für alle Folgen auf einmal (Tonspur per Sprache wählbar). |
-| **Vorschau und „passt nicht“** | In der Übersicht zeigt „Untertitel ansehen“ jede externe Datei mit Herkunft und Textprobe. Ein heruntergeladener Untertitel lässt sich verwerfen: er wird gelöscht, für diesen Titel gesperrt und neu gesucht. |
-| **Statistik** | Abdeckung pro Bibliothek und Sprache (z. B. „Serien: 92 % Deutsch“) und wie viel davon vom Plugin stammt. |
-| **Sync-Bericht** | Geplante Aufgabe „Sync-Bericht erstellen (nur prüfen)“ prüft alle externen SRT-Dateien gegen die Tonspur, ohne etwas zu ändern. Verschobene lassen sich einzeln korrigieren – fremde Dateien bekommen eine korrigierte Kopie („Sync“), das Original bleibt. |
-| **Rücksicht auf Zuschauer** | Schwere Arbeit pausiert, solange jemand etwas schaut (ein laufender Whisper-Job wird angehalten und fortgesetzt). Automatische Arbeit optional nur in einem Zeitfenster (z. B. 1–7 Uhr). |
-| **Benachrichtigung** | Nach jedem Lauf eine Zusammenfassung im Jellyfin-Aktivitätsprotokoll, optional per Webhook (ntfy, Gotify, Discord, JSON). |
-| **Whisper als letzter Ausweg** | Optional: Folgen, für die seit X Tagen kein Untertitel gefunden wurde, bekommen nach der nächtlichen Download-Aufgabe einen Whisper-Untertitel – höchstens N pro Lauf, älteste Lücken zuerst. |
-| **Absturzsicher** | Whisper läuft in einem eigenen Prozess: stürzt der GPU-Treiber ab, läuft Jellyfin weiter und der Job wird auf der CPU wiederholt. Ein kurzer GPU-Selbsttest nach dem Start (und per Button) zeigt Treiberprobleme sofort an. |
-| **ASS/SSA → SRT** | Optional: eingebettete ASS-Untertitel (Anime) zusätzlich als sauberes SRT („Text“, Dialog + Lieder), damit der einheitliche Stil greift. |
-| **Forced für Synchronfassungen** | Optional: gibt es eine Tonspur in der gewünschten Sprache, aber keinen Forced-Untertitel, entsteht einer aus den Schildern/Liedern der ASS-Spur oder wird als „nur fremdsprachige Teile“ geladen (nur bei exaktem Treffer). Mehrere OCR-Spuren einer Sprache: die mit nur einem Bruchteil der Einträge wird als forced erkannt. |
-| **Neue Einträge sofort** | Neu hinzugefügte Filme und Folgen werden automatisch bearbeitet, sobald der Bibliotheks-Scan ruhig ist. |
-| **Übersicht** | Die Plugin-Seite zeigt pro Film/Folge, welche Sprachen vorhanden sind oder fehlen und warum (nichts gefunden, verworfen wegen Asynchronität …), mit den Aktionen „Neu suchen“ und „Whisper“. |
-| **Synchronität prüfen und korrigieren** | Silero VAD erkennt Sprache in der Tonspur (bei Surround-Ton im Center-Kanal). Der Abgleich korrigiert Versatz, Framerate (23,976/24/25) und Schnittunterschiede, sprachunabhängig. Untertitel, die nicht zur Tonspur passen, werden verworfen; bereits synchrone Untertitel bleiben unverändert. |
+| ![Jobs with progress and remaining time](docs/images/overview-queue.jpg) | ![Subtitle preview with "doesn't fit"](docs/images/preview.jpg) |
+| Overview with job list (progress, remaining time) | Preview of all subtitle files of a title |
+| ![Coverage statistics](docs/images/stats.jpg) | ![Sync report](docs/images/sync-report.jpg) |
+| Coverage per library and language | Sync report: shifted subtitles, fixed on request |
+| ![Translate an existing subtitle](docs/images/dialog-translate.jpg) | ![Whisper from an audio track](docs/images/dialog-abyss.jpg) |
+| Translate an existing subtitle (item page) | Whisper from a chosen audio track (item page) |
 
-## Geplante Aufgaben (Dashboard → Geplante Aufgaben → SubtitleForge)
+The item page dialog is built from Jellyfin's own dialog components, so it follows the active theme. Shown here: the
+default dark theme and [Abyss](https://github.com/AumGupta/abyss-jellyfin).
 
-| Aufgabe | Standard-Zeitplan |
+## Requirements
+
+- **Jellyfin 12.x** (12.0 or newer, .NET 10), on Linux **x64 or arm64**.
+- About 0.2–1 GB of free space for AI models. They are only downloaded when a feature first needs them.
+- Optional: free API keys for [SubDL](https://subdl.com), [OpenSubtitles.com](https://www.opensubtitles.com) (plus
+  account) and [Jimaku](https://jimaku.cc).
+- Optional: a GPU for Whisper (AMD, Intel, or NVIDIA with the proprietary driver), see [GPU acceleration](#gpu-acceleration).
+
+Runs fine on small hardware: OCR, sync and translation are CPU-friendly. Whisper on a 4-core CPU takes roughly
+5–10 minutes per episode with the `small` model.
+
+## Installation
+
+### From the plugin repository (recommended)
+
+1. Jellyfin → **Dashboard → Plugins → Repositories → +**. Enter any name and this URL:
+   ```
+   https://raw.githubusercontent.com/<owner>/jellyfin-plugin-subtitleforge/main/manifest.json
+   ```
+2. **Catalog** → *SubtitleForge* → install.
+3. Restart Jellyfin.
+
+### Manually
+
+1. Download `subtitleforge_<version>.zip` from the [Releases](../../releases).
+2. Extract it to `<jellyfin data>/plugins/SubtitleForge_<version>/`. On Debian/Ubuntu that is `/var/lib/jellyfin/plugins/`.
+3. Make the folder owned by the Jellyfin user and restart Jellyfin.
+
+## Getting started
+
+1. Open **Dashboard → SubtitleForge → Einstellungen** (settings).
+2. **Bibliotheken** (libraries): tick the libraries the plugin should work on. Start with a small one.
+3. **Sprachen** (languages): default languages, e.g. `de,en`. Per series or movie you can override them with the tag
+   `subs:de,ja` in the metadata editor; `subs:none` disables a title.
+4. Enter the **API keys** of the download sources you want to use.
+5. Optional: choose the subtitle **style**, enable **GPU** for Whisper, set the **time window** or a **webhook**.
+6. Start the scheduled tasks once by hand (**Dashboard → Scheduled Tasks → SubtitleForge**). After that they run every night:
+
+| Task | Default schedule |
 |---|---|
-| Bild-Untertitel in Text umwandeln (OCR) | täglich 03:00 |
-| Fehlende Untertitel herunterladen (Whisper-Fallback nur, wenn aktiviert) | täglich 04:00 |
-| Untertitel-Synchronität prüfen und korrigieren | nur manuell |
-| Sync-Bericht erstellen (nur prüfen) | nur manuell |
+| Bild-Untertitel in Text umwandeln (OCR) | daily 03:00 |
+| Fehlende Untertitel herunterladen (download, translate, Whisper last resort) | daily 04:00 |
+| Untertitel-Synchronität prüfen und korrigieren | manual |
+| Sync-Bericht erstellen (nur prüfen) | manual |
 
-## GPU-Beschleunigung einrichten
+New movies and episodes are processed automatically a few minutes after the library scan, if enabled.
 
-- Native Installation (Debian/Ubuntu): `sudo apt install libvulkan1 mesa-vulkan-drivers`; der Jellyfin-Benutzer braucht Zugriff auf `/dev/dri` (Gruppen `render`/`video`, wie für Hardware-Transcoding). Danach Jellyfin neu starten.
-- Docker: das offizielle Image enthält kein Vulkan. `/dev/dri` durchreichen und die beiden Pakete im Image nachinstallieren (eigenes Dockerfile).
-- Die Vulkan-Variante von whisper.cpp baut `tools/build-whisper-vulkan.sh` (gleicher Stand wie Whisper.net 1.8.1).
+**Tags**
 
-## Installation über das Plugin-Repository
+| Tag | Effect |
+|---|---|
+| `subs:de,en` | Languages for this series/movie (on a series: all episodes) |
+| `subs:none` | Do nothing for this title |
+| `whisper:auto` | Generate with Whisper right away when no subtitle was found |
+| `whisper:off` | Never use Whisper automatically for this title |
 
-1. Jellyfin → Dashboard → Plugins → Repositorys → „+“ und als URL eintragen:
-   `https://raw.githubusercontent.com/<owner>/<repo>/main/manifest.json`
-2. Im Katalog „SubtitleForge“ installieren und Jellyfin neu starten.
-3. Unter Plugins → SubtitleForge → Einstellungen Bibliotheken, Sprachen und API-Keys eintragen.
+## How it decides what to do
 
-Releases entstehen automatisch: ein Tag `v<version>` (z. B. `v0.3.0.0`) baut das Plugin (`tools/package.sh`), hängt die Zip-Datei an ein GitHub-Release und trägt die Version in `manifest.json` ein (`tools/update-manifest.py`).
+For each wanted language without a subtitle, the plugin goes through these steps in order and stops at the first that works:
 
-## Bauen
+1. **Embedded text subtitle** in the file: nothing to do.
+2. **Embedded image subtitle** (PGS): convert with OCR.
+3. **Download** from SubDL / OpenSubtitles / Jimaku, verified against the audio and corrected if needed.
+4. **Translate** an existing subtitle of another language (preferably the official one).
+5. **Whisper**: only on demand, with the `whisper:auto` tag, or as the configured last resort after X days.
 
+## GPU acceleration
+
+Whisper uses the GPU via Vulkan when one is usable, and falls back to the CPU otherwise.
+
+**Native installation** (Debian/Ubuntu):
 ```bash
-dotnet publish Jellyfin.Plugin.SubtitleForge/Jellyfin.Plugin.SubtitleForge.csproj -c Release -o out
+sudo apt install libvulkan1 mesa-vulkan-drivers
 ```
+The `jellyfin` user needs access to `/dev/dri`, just like for hardware transcoding.
 
-Den Inhalt von `out/` (DLLs, `runtimes/` und `whisperhost/`) nach `<jellyfin-config>/plugins/SubtitleForge/` kopieren und Jellyfin neu starten. Ohne lokales .NET SDK baut `dev-deploy.sh` das Plugin in einem Podman-Container und spielt es in eine lokale Test-Instanz ein.
+**NVIDIA:** only with the proprietary driver. The open-source Mesa driver for NVIDIA hangs on these workloads and is
+skipped automatically.
 
-## Tests
+**Docker:** the official image contains no Vulkan. Pass `/dev/dri` through and add the two packages in your own image.
+
+**Intel Arc on Proxmox:** with Proxmox' 6.8 kernel, the `i915` driver hung on Whisper compute jobs (GPU hang). With the
+opt-in kernel **6.14** it runs stably. The plugin survives such hangs either way and finishes on the CPU.
+
+The settings page shows which GPU was found and whether Whisper runs on it. It also has a *test GPU now* button.
+
+## Privacy: what leaves your server
+
+- **Download sources** (SubDL, OpenSubtitles, Jimaku) receive what is needed to find subtitles: title, year, IMDb/TMDb
+  id, season/episode, and for OpenSubtitles the file hash. They also receive your API key and, for OpenSubtitles, your login.
+- **Model downloads** come from Hugging Face, from pinned versions with checksums: Whisper models and translation models.
+- **Optional webhook:** the run summary with titles and file names.
+
+Nothing else. OCR, sync, translation and Whisper run locally.
+
+## Building and tests
+
+Requires the .NET 10 SDK.
 
 ```bash
 dotnet test Jellyfin.Plugin.SubtitleForge.Tests
+./tools/package.sh 0.3.0.0
 ```
 
-- Die Sync-Tests nutzen einen synthetischen Film mit Sprachausgabe (`tools/make_synth_film.py` erzeugt `Fixtures/synth/film.wav`).
-- `SF_REAL_DIR` und `SF_ANIME_DIR` aktivieren die Kalibrierungstests mit echten Tonspuren und Referenz-Untertiteln (siehe `RealMediaSyncTests.cs` und `AnimeSyncTests.cs`).
-- `SF_DUMP_PGS=<datei.sup>` exportiert die PGS-Bilder und das OCR-Ergebnis zur Fehlersuche.
+`package.sh` builds the release zip, `dist/subtitleforge_<version>.zip`.
 
-## Lizenz
+**Without a local SDK:** `dev-deploy.sh` builds in a Podman container and deploys into a local test Jellyfin.
 
-GPLv3 (siehe `LICENSE`). Fremdkomponenten: siehe `THIRD-PARTY-NOTICES.md`.
+**Releases:** pushing a tag `v<version>` makes GitHub Actions build the zip, create a release and add the version to
+`manifest.json`.
+
+**Optional tests with real media**, enabled through environment variables (see the test files):
+- `SF_REAL_DIR`, `SF_ANIME_DIR`: sync calibration
+- `SF_WHISPER_DIR`: Whisper
+- `SF_MT_DIR`: translation
+- `SF_JADE_DIR`: Japanese→German comparison
+
+## License
+
+[MIT](LICENSE): you can do whatever you want with this, as long as the license notice stays.
+
+- The plugin runs inside Jellyfin (GPL-2.0) and uses its API.
+- Bundled and downloaded third-party components keep their own licenses, see
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). They are Apache-2.0, MIT, CC-BY-SA-4.0 (FuguMT models, downloaded at
+  runtime) and GPL-3.0 with the GCC runtime exception (libgomp).
+- Subtitles from download sources are subject to those sources' terms.
