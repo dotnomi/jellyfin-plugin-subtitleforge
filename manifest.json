@@ -3,6 +3,14 @@
     "guid": "f1e66da5-7fed-45f1-a6b8-79c253708fc8",
     "versions": [
       {
+        "version": "0.5.1.0",
+        "changelog": "0.5.1: Subtitle background is one box around all lines (no darker overlap between lines), style number fields are limited to their range (an outline of 340 px no longer breaks the preview), font weight offers only normal and bold (the two weights subtitle fonts actually have). 0.5: Subtitle tools in the player (other match, sync check, shift timing earlier/later) and in every file list, recycle bin for deleted and rejected subtitles, filter for titles missing one language, sources ranked by what fitted before, optional weekly report, settings export/import (without secrets), subtitle polish (repairs broken umlauts/encoding, optional line wrapping and minimum display time), dictionary-based OCR correction. 0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's \"⋮\" menu and for multi-select, delete single subtitles the plugin made, every plugin subtitle is marked \"[SF]\" (older files are renamed once), live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan. Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/dotnomi/jellyfin-plugin-subtitleforge/releases/download/v0.5.1.0/subtitleforge_0.5.1.0.zip",
+        "checksum": "f95cc033a5d7f4565bdd935a2bc9f119",
+        "timestamp": "2026-11-24T20:50:32Z"
+      },
+      {
         "version": "0.5.0.0",
         "changelog": "0.5: Subtitle tools in the player (other match, sync check, shift timing earlier/later) and in every file list, recycle bin for deleted and rejected subtitles, filter for titles missing one language, sources ranked by what fitted before, optional weekly report, settings export/import (without secrets), subtitle polish (repairs broken umlauts/encoding, optional line wrapping and minimum display time), dictionary-based OCR correction. 0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's \"⋮\" menu and for multi-select, delete single subtitles the plugin made, every plugin subtitle is marked \"[SF]\" (older files are renamed once), live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan. Security hardening: signed download ids, https-only host allowlists and size limits for downloads, zip bomb and image-subtitle memory limits, safe file names from container language tags, atomic temp files, hardened parsers.",
         "targetAbi": "12.0.0.0",
