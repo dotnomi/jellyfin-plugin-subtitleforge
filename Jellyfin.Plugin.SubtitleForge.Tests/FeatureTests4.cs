@@ -191,6 +191,7 @@ public sealed class FeatureTests4 : IDisposable
     [Fact]
     public void Decode_UsesLegacyCodePageOfTheLanguage()
     {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         var cyrillic = System.Text.Encoding.GetEncoding(1251).GetBytes("1\n00:00:01,000 --> 00:00:02,000\nПривет\n");
         Assert.Contains("Привет", SubtitleContent.Decode(cyrillic, "ru"), StringComparison.Ordinal);
         var german = System.Text.Encoding.GetEncoding(1252).GetBytes("Grüße");
