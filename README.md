@@ -109,7 +109,7 @@ Runs fine on small hardware: OCR, sync and translation are CPU-friendly. Whisper
 
 1. Jellyfin → **Dashboard → Plugins → Repositories → +**. Enter any name and this URL:
    ```
-   https://raw.githubusercontent.com/<owner>/jellyfin-plugin-subtitleforge/main/manifest.json
+   https://raw.githubusercontent.com/dotnomi/jellyfin-plugin-subtitleforge/main/manifest.json
    ```
 2. **Catalog** → *SubtitleForge* → install.
 3. Restart Jellyfin.
