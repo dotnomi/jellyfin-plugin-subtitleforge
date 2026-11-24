@@ -54,6 +54,8 @@
     <None Remove="Ocr\Models\*" />
     <EmbeddedResource Include="Ocr\Models\rec.onnx" />
     <EmbeddedResource Include="Ocr\Models\dict.txt" />
+    <None Remove="Ocr\Dictionaries\*" />
+    <EmbeddedResource Include="Ocr\Dictionaries\*.txt.gz" />
     <None Remove="Sync\Models\*" />
     <EmbeddedResource Include="Sync\Models\silero_vad.onnx" />
   </ItemGroup>

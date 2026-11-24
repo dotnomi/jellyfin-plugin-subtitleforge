@@ -74,6 +74,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool OcrSkipIfTextExists { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether OCR text gets a second, word-list based correction pass over the whole
+    /// subtitle (e.g. "rnorning" → "morning", "Iassen" → "lassen").
+    /// </summary>
+    public bool OcrDictionaryCorrection { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the CPU threads used by OCR (1-2 recommended on NAS CPUs).
     /// </summary>
     public int OcrThreads { get; set; } = 2;
@@ -88,6 +94,29 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets a value indicating whether song lyrics (lines with ♪) are removed as well.
     /// </summary>
     public bool RemoveLyrics { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether written subtitles get broken encodings repaired
+    /// ("Ã¤" → "ä", "â€™" → "’") and stray control characters removed.
+    /// </summary>
+    public bool PolishFixEncoding { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether written subtitles are re-broken so no line exceeds
+    /// <see cref="PolishMaxLineLength"/> characters.
+    /// </summary>
+    public bool PolishWrapLines { get; set; }
+
+    /// <summary>
+    /// Gets or sets the longest line (visible characters) when <see cref="PolishWrapLines"/> is on.
+    /// </summary>
+    public int PolishMaxLineLength { get; set; } = 42;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether cues that are too short to read are shown longer
+    /// (only into free time before the next cue).
+    /// </summary>
+    public bool PolishMinDuration { get; set; }
 
     /// <summary>
     /// Gets or sets the comma separated languages to download (ISO 639-1, e.g. "de,en").
@@ -230,6 +259,21 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the Jimaku API key (anime subtitles, Japanese/English).</summary>
     public string JimakuApiKey { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets a value indicating whether sources that often fit (or often get rejected) are ranked up (or down) a little.</summary>
+    public bool LearnSourceQuality { get; set; } = true;
+
+    /// <summary>Gets or sets how many days deleted or rejected subtitles stay restorable (0 = delete immediately).</summary>
+    public int TrashDays { get; set; } = 30;
+
+    /// <summary>Gets or sets a value indicating whether a weekly summary is sent (activity log and webhook).</summary>
+    public bool WeeklyReport { get; set; }
+
+    /// <summary>Gets or sets the weekday of the weekly summary (0 = Sunday … 6 = Saturday).</summary>
+    public int WeeklyReportDay { get; set; } = 1;
+
+    /// <summary>Gets or sets the hour (local time) of the weekly summary.</summary>
+    public int WeeklyReportHour { get; set; } = 9;
 
     /// <summary>
     /// Gets or sets the ids of the libraries the plugin works on (empty = all libraries).

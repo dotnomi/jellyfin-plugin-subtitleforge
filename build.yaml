@@ -1,7 +1,7 @@
 ---
 name: "SubtitleForge"
 guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
-version: "0.4.0.0"
+version: "0.5.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Uniform subtitle style, OCR for image subtitles, verified downloads, sync fixing, offline translation, Whisper"
@@ -38,6 +38,10 @@ artifacts:
 - "whisperhost/linux-x64/sf-whisper"
 - "whisperhost/linux-arm64/sf-whisper"
 changelog: >
+  0.5: Subtitle tools in the player (other match, sync check, shift timing earlier/later) and in every file list,
+  recycle bin for deleted and rejected subtitles, filter for titles missing one language, sources ranked by what
+  fitted before, optional weekly report, settings export/import (without secrets), subtitle polish (repairs broken
+  umlauts/encoding, optional line wrapping and minimum display time), dictionary-based OCR correction.
   0.4: English interface (German stays available), SubtitleForge entry in Jellyfin's "⋮" menu and for multi-select,
   delete single subtitles the plugin made, every plugin subtitle is marked "[SF]" (older files are renamed once),
   live style preview, batch actions in the overview, OCR for DVD (VobSub) subtitles, Docker example with Vulkan.

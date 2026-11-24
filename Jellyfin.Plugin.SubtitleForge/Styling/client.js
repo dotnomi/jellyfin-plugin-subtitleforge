@@ -115,6 +115,11 @@
             error: 'Could not schedule.', del: 'Delete', delSure: 'Really delete?', deleted: 'deleted', delFailed: 'Could not delete.',
             noFiles: 'This title has no external subtitle files.', cues: '{0} cues', forced: 'forced', loading: 'Loading …',
             o_download: 'download', o_translation: 'translation', o_whisper: 'Whisper', o_ocr: 'OCR', o_plugin: 'SubtitleForge', o_foreign: 'not from SubtitleForge',
+            other: 'Other match', otherBusy: 'Removed – searching for another match …', otherFailed: 'Could not reject.',
+            resync: 'Check sync', resyncBusy: 'Checking against the audio …', shifted: 'Shifted by {0}', shiftFailed: 'Could not shift.',
+            shiftHint: 'Timing: earlier / later', current: 'playing now', trash: 'Recently deleted', restore: 'Restore', restored: 'restored',
+            restoreFailed: 'Could not restore.', playerReload: 'Changed – the player reloads the subtitle.', playerTitle: 'Subtitle (SubtitleForge)',
+            noSession: 'The current playback could not be found.',
             de: 'German', en: 'English', ja: 'Japanese', fr: 'French', es: 'Spanish', it: 'Italian'
         },
         de: {
@@ -133,6 +138,11 @@
             error: 'Fehler beim Einplanen.', del: 'Löschen', delSure: 'Wirklich löschen?', deleted: 'gelöscht', delFailed: 'Löschen fehlgeschlagen.',
             noFiles: 'Dieser Titel hat keine externen Untertitel-Dateien.', cues: '{0} Einträge', forced: 'forced', loading: 'Wird geladen …',
             o_download: 'Download', o_translation: 'Übersetzung', o_whisper: 'Whisper', o_ocr: 'OCR', o_plugin: 'SubtitleForge', o_foreign: 'nicht von SubtitleForge',
+            other: 'Anderer Treffer', otherBusy: 'Entfernt – suche einen anderen Treffer …', otherFailed: 'Verwerfen fehlgeschlagen.',
+            resync: 'Sync prüfen', resyncBusy: 'Wird gegen die Tonspur geprüft …', shifted: 'Verschoben um {0}', shiftFailed: 'Verschieben fehlgeschlagen.',
+            shiftHint: 'Timing: früher / später', current: 'läuft gerade', trash: 'Zuletzt gelöscht', restore: 'Wiederherstellen', restored: 'wiederhergestellt',
+            restoreFailed: 'Wiederherstellen fehlgeschlagen.', playerReload: 'Geändert – der Player lädt den Untertitel neu.', playerTitle: 'Untertitel (SubtitleForge)',
+            noSession: 'Die laufende Wiedergabe wurde nicht gefunden.',
             de: 'Deutsch', en: 'Englisch', ja: 'Japanisch', fr: 'Französisch', es: 'Spanisch', it: 'Italienisch'
         }
     };
@@ -147,6 +157,37 @@
     function api(method, path) {
         var c = window.ApiClient;
         return c.ajax({ type: method, url: c.getUrl(path), dataType: 'json' });
+    }
+
+    function smallButton(text) {
+        var b = el('button', { is: 'emby-button', type: 'button', 'class': 'raised emby-button' }, text);
+        b.style.cssText = 'margin:0;padding:.3em .7em;font-size:.85em;flex-shrink:0;';
+        return b;
+    }
+
+    function seconds(ms) { return (ms > 0 ? '+' : '') + (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : (ms % 100 === 0 ? 1 : 2)) + ' s'; }
+
+    /* The playback of this browser: item, subtitle track and session (to reload the subtitle afterwards). */
+    function currentPlayback() {
+        var c = window.ApiClient;
+        if (!c || !c.deviceId) { return Promise.resolve(null); }
+        return api('GET', 'Sessions?deviceId=' + encodeURIComponent(c.deviceId())).then(function (list) {
+            var s = (list || []).filter(function (x) { return x.NowPlayingItem && validId(x.NowPlayingItem.Id); })[0];
+            return s ? { session: s.Id, item: s.NowPlayingItem.Id, subtitle: s.PlayState ? s.PlayState.SubtitleStreamIndex : null } : null;
+        }, function () { return null; });
+    }
+
+    function sendCommand(session, name, args) {
+        var c = window.ApiClient;
+        return c.ajax({ type: 'POST', url: c.getUrl('Sessions/' + encodeURIComponent(session) + '/Command'), data: JSON.stringify({ Name: name, Arguments: args || {} }), contentType: 'application/json' });
+    }
+
+    // Switch the subtitle off and on again so the player fetches the changed file.
+    function reloadSubtitle(playback, index) {
+        if (!playback || index === null || index === undefined || index < 0) { return; }
+        sendCommand(playback.session, 'SetSubtitleStreamIndex', { Index: '-1' }).then(function () {
+            setTimeout(function () { sendCommand(playback.session, 'SetSubtitleStreamIndex', { Index: String(index) }); }, 1500);
+        }, function () { });
     }
 
     function checkAdmin() {
@@ -211,7 +252,8 @@
 
     // Built from Jellyfin's own dialog/form markup (formDialog, emby-select, emby-checkbox, raised button-submit),
     // so it takes the look of whatever theme is active (Dark, Light, custom CSS like Abyss).
-    function openDialog(ids) {
+    function openDialog(ids, opts) {
+        opts = opts || {};
         loadInfo(ids).then(function (info) {
             if (!info) {
                 return;
@@ -298,15 +340,23 @@
                         files.appendChild(el('div', { 'class': 'fieldDescription' }, t('noFiles')));
                         return;
                     }
+                    if (opts.playback && opts.playback.subtitle !== null) {
+                        list.sort(function (a, b) { return (b.index === opts.playback.subtitle) - (a.index === opts.playback.subtitle); });
+                    }
                     list.forEach(function (f) {
-                        var row = el('div', { 'class': 'listItem listItem-border' });
-                        row.style.cssText = 'display:flex;align-items:center;gap:.8em;padding:.5em 0;';
+                        var wrap = el('div', { 'class': 'listItem-border' });
+                        wrap.style.cssText = 'padding:.3em 0;';
+                        var row = el('div', { 'class': 'listItem' });
+                        row.style.cssText = 'display:flex;align-items:center;gap:.8em;padding:.2em 0;';
+                        wrap.appendChild(row);
                         var body = el('div', { 'class': 'listItemBody' });
                         body.style.cssText = 'flex:1;min-width:0;padding:0;';
                         var name = el('div', { 'class': 'listItemBodyText' }, (f.title || f.file));
                         name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
                         var meta = [langName((f.language || '').substring(0, 2)), t('o_' + f.origin), fmt('cues', f.count)];
                         if (f.forced) { meta.push(t('forced')); }
+                        var playing = opts.playback && f.index === opts.playback.subtitle;
+                        if (playing) { meta.push(t('current')); }
                         body.appendChild(name);
                         body.appendChild(el('div', { 'class': 'listItemBodyText secondary' }, meta.join(' · ')));
                         row.appendChild(body);
@@ -331,16 +381,119 @@
                                 api('POST', 'SubtitleForge/Items/' + info.ids[0] + '/Subtitles/Delete?file=' + encodeURIComponent(f.file)).then(function () {
                                     b.textContent = t('deleted');
                                     b.style.background = '';
-                                    row.style.opacity = '.45';
+                                    wrap.style.opacity = '.45';
+                                    Array.prototype.forEach.call(wrap.querySelectorAll('button'), function (x) { x.disabled = true; });
+                                    setTimeout(loadTrash, 800);
                                 }, function () { status.textContent = t('delFailed'); b.disabled = false; });
                             });
                             row.appendChild(b);
                         }
-                        files.appendChild(row);
+                        if (f.canEdit) {
+                            wrap.appendChild(tools(f, playing));
+                        }
+                        files.appendChild(wrap);
                     });
+                    loadTrash();
                 }, function () { files.textContent = t('error'); });
             }
 
+            // Second line of a file: other match, sync check, shift earlier/later.
+            function tools(f, playing) {
+                var bar = el('div');
+                bar.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:.4em;margin:.1em 0 .3em;';
+                var total = 0;
+                var note = el('span', { 'class': 'fieldDescription' });
+                note.style.cssText = 'margin:0 0 0 .3em;';
+                function busy(on) { Array.prototype.forEach.call(bar.querySelectorAll('button'), function (x) { x.disabled = on; }); }
+                function changed() {
+                    if (playing) { reloadSubtitle(opts.playback, f.index); status.textContent = t('playerReload'); }
+                }
+                if (f.canReject) {
+                    var other = smallButton(t('other'));
+                    other.addEventListener('click', function () {
+                        busy(true);
+                        api('POST', 'SubtitleForge/Items/' + info.ids[0] + '/Subtitles/Reject?file=' + encodeURIComponent(f.file)).then(function () {
+                            note.textContent = t('otherBusy');
+                            bar.parentNode.style.opacity = '.45';
+                            setTimeout(loadTrash, 800);
+                        }, function () { note.textContent = t('otherFailed'); busy(false); });
+                    });
+                    bar.appendChild(other);
+                }
+                var sync = smallButton(t('resync'));
+                sync.addEventListener('click', function () {
+                    busy(true);
+                    note.textContent = t('resyncBusy');
+                    api('POST', 'SubtitleForge/Items/' + info.ids[0] + '/Subtitles/Fix?file=' + encodeURIComponent(f.file)).then(function (r) {
+                        note.textContent = r && r.message ? r.message : '';
+                        busy(false);
+                        if (r && r.ok) { changed(); }
+                    }, function () { note.textContent = t('error'); busy(false); });
+                });
+                bar.appendChild(sync);
+                var label = el('span', { 'class': 'fieldDescription' }, t('shiftHint'));
+                label.style.cssText = 'margin:0 .2em 0 .6em;';
+                bar.appendChild(label);
+                [-1000, -250, 250, 1000].forEach(function (ms) {
+                    var b = smallButton(seconds(ms));
+                    b.addEventListener('click', function () {
+                        busy(true);
+                        api('POST', 'SubtitleForge/Items/' + info.ids[0] + '/Subtitles/Shift?file=' + encodeURIComponent(f.file) + '&ms=' + ms).then(function (r) {
+                            total += ms;
+                            note.textContent = fmt('shifted', seconds(total));
+                            busy(false);
+                            if (r && r.copy) {
+                                // A file from elsewhere stays untouched: further shifts go to the corrected copy.
+                                f.file = r.file;
+                                playing = false;
+                                setTimeout(loadFiles, 1500);
+                            } else {
+                                changed();
+                            }
+                        }, function () { note.textContent = t('shiftFailed'); busy(false); });
+                    });
+                    bar.appendChild(b);
+                });
+                bar.appendChild(note);
+                return bar;
+            }
+
+            function loadTrash() {
+                var box = files.querySelector('.sfTrash');
+                if (box) { box.remove(); }
+                api('GET', 'SubtitleForge/Items/' + info.ids[0] + '/Trash').then(function (list) {
+                    if (!list || !list.length || files.querySelector('.sfTrash')) { return; }
+                    box = el('div', { 'class': 'sfTrash' });
+                    box.style.cssText = 'margin-top:1em;';
+                    box.appendChild(el('h3', { 'class': 'sectionTitle' }, t('trash')));
+                    list.forEach(function (e) {
+                        var row = el('div', { 'class': 'listItem listItem-border' });
+                        row.style.cssText = 'display:flex;align-items:center;gap:.8em;padding:.4em 0;';
+                        var body = el('div', { 'class': 'listItemBody' });
+                        body.style.cssText = 'flex:1;min-width:0;padding:0;';
+                        var name = el('div', { 'class': 'listItemBodyText' }, e.file);
+                        name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                        body.appendChild(name);
+                        body.appendChild(el('div', { 'class': 'listItemBodyText secondary' }, new Date(e.deleted).toLocaleString()));
+                        row.appendChild(body);
+                        var b = smallButton(t('restore'));
+                        b.addEventListener('click', function () {
+                            b.disabled = true;
+                            api('POST', 'SubtitleForge/Trash/' + e.id + '/Restore').then(function () {
+                                b.textContent = t('restored');
+                                setTimeout(loadFiles, 1500);
+                            }, function () { status.textContent = t('restoreFailed'); b.disabled = false; });
+                        });
+                        row.appendChild(b);
+                        box.appendChild(row);
+                    });
+                    files.appendChild(box);
+                }, function () { });
+            }
+
+            if (single && opts.manage) {
+                action.value = 'manage';
+            }
             action.addEventListener('change', update);
             update();
 
@@ -443,6 +596,37 @@
                     setTimeout(attempt, 250);
                 }
             })();
+        });
+    });
+
+    /* Button in the video player (next to the subtitle button): manage the subtitle that is playing now. */
+    function addPlayerButton() {
+        var subs = document.querySelector('.videoOsdBottom .btnSubtitles, .osdControls .btnSubtitles');
+        if (!subs || subs.parentNode.querySelector('.btnSubtitleForgeOsd')) {
+            return;
+        }
+        var btn = el('button', { is: 'paper-icon-button-light', type: 'button', 'class': 'autoSize paper-icon-button-light btnSubtitleForgeOsd', title: t('playerTitle') });
+        btn.appendChild(el('span', { 'class': 'xlargePaperIconButton material-icons tune', 'aria-hidden': 'true' }));
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            currentPlayback().then(function (pb) {
+                if (!pb) { if (window.Dashboard && Dashboard.alert) { Dashboard.alert(t('noSession')); } return; }
+                openDialog([pb.item], { manage: true, playback: pb });
+            });
+        });
+        subs.parentNode.insertBefore(btn, subs.nextSibling);
+    }
+
+    var osdTimer = null;
+    document.addEventListener('viewshow', function () {
+        if (osdTimer) { clearInterval(osdTimer); osdTimer = null; }
+        checkAdmin().then(function (admin) {
+            if (!admin) { return; }
+            var tries = 0;
+            osdTimer = setInterval(function () {
+                if (document.querySelector('.videoOsdBottom, .osdControls')) { addPlayerButton(); }
+                if (++tries > 40) { clearInterval(osdTimer); osdTimer = null; }
+            }, 500);
         });
     });
 

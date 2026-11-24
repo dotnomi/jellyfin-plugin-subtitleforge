@@ -120,7 +120,8 @@ public class SubtitleSearchService
             }
         }
 
-        return CandidateRanker.Rank(all, query);
+        var config = Plugin.Instance?.Configuration;
+        return CandidateRanker.Rank(all, query, false, config is null || config.LearnSourceQuality ? SourceStats.Bonuses() : null);
     }
 
     /// <summary>

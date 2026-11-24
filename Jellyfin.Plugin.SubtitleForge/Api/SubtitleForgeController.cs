@@ -296,6 +296,8 @@ public class SubtitleForgeController : ControllerBase
                 origin = info.Origin,
                 canReject = info.Origin is "download" or "whisper" or "translation",
                 canDelete = info.Origin != "foreign",
+                canEdit = s.Path!.EndsWith(".srt", StringComparison.OrdinalIgnoreCase),
+                index = s.Index,
                 count = cues.Count,
                 preview = cues.Skip(start).Take(6).Select(c => new { time = Srt.FormatTime(c.StartMs)[..8], text = c.Text.Replace("\n", " / ", StringComparison.Ordinal) }),
             });
@@ -338,6 +340,13 @@ public class SubtitleForgeController : ControllerBase
         }
 
         var lang2 = Lang.ToTwoLetter(info.Language) ?? info.Language;
+        var snapshot = Snapshot(video.Id, lang2, "translate:" + lang2);
+        if (info.Origin == "download")
+        {
+            SourceStats.Failed(info.Tag);
+        }
+
+        var trashed = System.IO.File.Exists(path) && _writer.DeleteFile(video, path, "rejected", snapshot);
         var blocked = false;
         if (info.Origin == "download" && _state.Get(video.Id, lang2)?.Reference is { } reference
             && reference.StartsWith(info.Tag + "|", StringComparison.OrdinalIgnoreCase))
@@ -346,7 +355,7 @@ public class SubtitleForgeController : ControllerBase
             blocked = true;
         }
 
-        var removed = _writer.DeleteOwn(video, info.Language, tag => string.Equals(tag, info.Tag, StringComparison.Ordinal), null);
+        var removed = _writer.DeleteOwn(video, info.Language, tag => string.Equals(tag, info.Tag, StringComparison.Ordinal), null) + (trashed ? 1 : 0);
         if (info.Origin == "translation")
         {
             _state.Set(video.Id, "translate:" + lang2, "rejected", Loc.T("rejected by user", "vom Benutzer verworfen"));
@@ -394,11 +403,6 @@ public class SubtitleForgeController : ControllerBase
             return BadRequest(Loc.T("Only subtitles SubtitleForge created can be deleted.", "Nur Untertitel, die SubtitleForge erstellt hat, können gelöscht werden."));
         }
 
-        if (!_writer.DeleteFile(video, path))
-        {
-            return BadRequest(Loc.T("The file could not be deleted (permissions?).", "Die Datei konnte nicht gelöscht werden (Rechte?)."));
-        }
-
         var lang2 = Lang.ToTwoLetter(info.Language) ?? info.Language;
         var forced = info.Tag.StartsWith("forced.", StringComparison.Ordinal);
         var detail = Loc.T("deleted by user", "vom Benutzer gelöscht");
@@ -409,14 +413,174 @@ public class SubtitleForgeController : ControllerBase
             "whisper" => "whisper:" + lang2,
             _ => null,
         };
+        var deletedKey = ItemProcessor.DeletedKey(System.IO.Path.GetFileNameWithoutExtension(path));
+        var snapshot = key is null ? Snapshot(video.Id, deletedKey) : Snapshot(video.Id, key, deletedKey);
+        if (!_writer.DeleteFile(video, path, "deleted", snapshot))
+        {
+            return BadRequest(Loc.T("The file could not be deleted (permissions?).", "Die Datei konnte nicht gelöscht werden (Rechte?)."));
+        }
+
         if (key is not null)
         {
             _state.Set(video.Id, key, ItemProcessor.DeletedByUser, detail, _state.Get(video.Id, key)?.Reference);
         }
 
-        _state.Set(video.Id, ItemProcessor.DeletedKey(System.IO.Path.GetFileNameWithoutExtension(path)), ItemProcessor.DeletedByUser, detail);
-        return Ok(new { deleted = true });
+        _state.Set(video.Id, deletedKey, ItemProcessor.DeletedByUser, detail);
+        return Ok(new { deleted = true, restorable = SubtitleTrash.List(video.Id).Any(e => e.FileName == file) });
     }
+
+    /// <summary>
+    /// Deleted or rejected subtitles of a video that can still be restored.
+    /// </summary>
+    /// <param name="id">Video id.</param>
+    /// <returns>Entries, newest first.</returns>
+    [HttpGet("Items/{id}/Trash")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<object> Trash([FromRoute] Guid id) =>
+        Ok(SubtitleTrash.List(id).Select(e => new { id = e.Id, file = e.FileName, deleted = e.DeletedUtc, reason = e.Reason }));
+
+    /// <summary>
+    /// All restorable subtitles (newest first, at most 500).
+    /// </summary>
+    /// <returns>Entries.</returns>
+    [HttpGet("Trash")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<object> TrashAll() =>
+        Ok(SubtitleTrash.List(null).Take(500).Select(e => new
+        {
+            id = e.Id,
+            file = e.FileName,
+            deleted = e.DeletedUtc,
+            reason = e.Reason,
+            item = e.ItemId,
+            name = _libraryManager.GetItemById(e.ItemId) is { } item ? Title(item) : null,
+        }));
+
+    /// <summary>
+    /// Puts a deleted or rejected subtitle back where it was, with the plugin state it had.
+    /// </summary>
+    /// <param name="entry">Recycle bin entry id.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Result.</returns>
+    [HttpPost("Trash/{entry}/Restore")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<object>> Restore([FromRoute] string entry, CancellationToken cancellationToken)
+    {
+        if (SubtitleTrash.Read(entry) is not { } stored || _libraryManager.GetItemById(stored.Entry.ItemId) is not Video video)
+        {
+            return NotFound();
+        }
+
+        var e = stored.Entry;
+        var target = e.OriginalPath;
+        if (!IsSubtitlePathOf(video, target) || OwnFile(video, target).Origin == "foreign")
+        {
+            return BadRequest(Loc.T("The original location is no longer valid (was the video moved?).", "Der ursprüngliche Ort ist nicht mehr gültig (wurde das Video verschoben?)."));
+        }
+
+        if (System.IO.File.Exists(target))
+        {
+            return Conflict(Loc.T("A file with this name exists again – delete it first.", "Eine Datei mit diesem Namen existiert wieder – lösche sie zuerst."));
+        }
+
+        await _writer.WriteFileAsync(video, target, stored.Content, cancellationToken).ConfigureAwait(false);
+        foreach (var snap in e.States)
+        {
+            if (snap.Outcome is null)
+            {
+                _state.Remove(video.Id, snap.Key);
+            }
+            else
+            {
+                _state.Set(video.Id, snap.Key, snap.Outcome, snap.Detail, snap.Reference);
+            }
+
+            if (e.Reason == "rejected" && snap.Reference is { } reference && !snap.Key.Contains(':', StringComparison.Ordinal))
+            {
+                _state.Unblock(video.Id, snap.Key, reference);
+            }
+        }
+
+        SubtitleTrash.Forget(e.Id);
+        return Ok(new { restored = true, file = e.FileName });
+    }
+
+    /// <summary>
+    /// Shifts all cues of a subtitle file. Files SubtitleForge made are changed in place; for other files a shifted
+    /// copy ("…Sync.srt") is written and the original stays untouched.
+    /// </summary>
+    /// <param name="id">Video id.</param>
+    /// <param name="file">File name.</param>
+    /// <param name="ms">Milliseconds (positive = later).</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The file that now holds the shifted subtitle.</returns>
+    [HttpPost("Items/{id}/Subtitles/Shift")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<object>> Shift([FromRoute] Guid id, [FromQuery] string file, [FromQuery] int ms, CancellationToken cancellationToken)
+    {
+        if (ms == 0 || Math.Abs(ms) > 600_000)
+        {
+            return BadRequest(Loc.T("The shift must be between -10 and +10 minutes.", "Die Verschiebung muss zwischen -10 und +10 Minuten liegen."));
+        }
+
+        if (_libraryManager.GetItemById(id) is not Video video)
+        {
+            return NotFound();
+        }
+
+        var path = ExternalSubtitle(video, file);
+        if (path is null || !path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(path)
+            || new System.IO.FileInfo(path).Length > SubtitleTrash.MaxFileBytes || new System.IO.FileInfo(path).LinkTarget is not null)
+        {
+            return NotFound();
+        }
+
+        var cues = Srt.Parse(await System.IO.File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false));
+        if (cues.Count == 0)
+        {
+            return BadRequest(Loc.T("File contains no subtitles", "Datei enthält keine Untertitel"));
+        }
+
+        var shifted = Srt.Write(ShiftCues(cues, ms));
+        var info = OwnFile(video, path);
+        string written;
+        if (info.Origin != "foreign")
+        {
+            await _writer.WriteFileAsync(video, path, new System.Text.UTF8Encoding(false).GetBytes(shifted), cancellationToken).ConfigureAwait(false);
+            written = path;
+        }
+        else
+        {
+            written = await _writer.SaveAsync(video, SubtitleFileWriter.BuildStem(video, ForeignLanguage(video, path), false, "Sync"), shifted, cancellationToken).ConfigureAwait(false);
+        }
+
+        return Ok(new { file = System.IO.Path.GetFileName(written), ms, copy = info.Origin == "foreign" });
+    }
+
+    /// <summary>
+    /// What SubtitleForge learned about the sources (saved vs. rejected downloads, ranking bonus).
+    /// </summary>
+    /// <returns>Rows.</returns>
+    [HttpGet("Sources")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<object> Sources() =>
+        Ok(SourceStats.All().Select(r => new { source = r.Source, saved = r.Saved, failed = r.Failed, bonus = r.Bonus }));
+
+    /// <summary>
+    /// Shifts cues, dropping those that would end before 0.
+    /// </summary>
+    /// <param name="cues">Cues.</param>
+    /// <param name="ms">Shift.</param>
+    /// <returns>Shifted cues.</returns>
+    internal static List<SubtitleCue> ShiftCues(IEnumerable<SubtitleCue> cues, int ms) =>
+        cues.Select(c => c with { StartMs = Math.Max(0, c.StartMs + ms), EndMs = c.EndMs + ms })
+            .Where(c => c.EndMs > c.StartMs)
+            .ToList();
 
     /// <summary>
     /// The last sync report (scheduled task "Sync-Bericht erstellen").
@@ -458,7 +622,8 @@ public class SubtitleForgeController : ControllerBase
             .Where(s => s.Type == MediaStreamType.Subtitle && s.IsExternal && !string.IsNullOrEmpty(s.Path))
             .Select(s => s.Path!)
             .FirstOrDefault(p => string.Equals(System.IO.Path.GetFileName(p), file, StringComparison.Ordinal));
-        if (path is null || !path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase))
+        if (path is null || !path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(path)
+            || new System.IO.FileInfo(path).LinkTarget is not null || new System.IO.FileInfo(path).Length > SubtitleTrash.MaxFileBytes)
         {
             return NotFound();
         }
@@ -477,19 +642,14 @@ public class SubtitleForgeController : ControllerBase
 
         var info = OwnFile(video, path);
         string written;
-        if (info.Origin is "download" or "plugin")
+        if (info.Origin != "foreign")
         {
             await SubtitleFileWriter.WriteAtomicAsync(path, new System.Text.UTF8Encoding(false).GetBytes(Srt.Write(alignment.Cues)), cancellationToken).ConfigureAwait(false);
             written = path;
         }
         else
         {
-            var stem = System.IO.Path.GetFileNameWithoutExtension(path);
-            var prefix = System.IO.Path.GetFileNameWithoutExtension(video.Path) + ".";
-            var rest = stem.StartsWith(prefix, StringComparison.Ordinal) ? stem[prefix.Length..] : string.Empty;
-            var lang = rest.Split('.')[0];
-            lang = Lang.ToTwoLetter(lang) is null ? "und" : lang;
-            written = await _writer.SaveAsync(video, SubtitleFileWriter.BuildStem(video, lang, false, "Sync"), Srt.Write(alignment.Cues), cancellationToken).ConfigureAwait(false);
+            written = await _writer.SaveAsync(video, SubtitleFileWriter.BuildStem(video, ForeignLanguage(video, path), false, "Sync"), Srt.Write(alignment.Cues), cancellationToken).ConfigureAwait(false);
         }
 
         var rows = Jellyfin.Plugin.SubtitleForge.Sync.SyncReportTask.Load();
@@ -663,6 +823,45 @@ public class SubtitleForgeController : ControllerBase
         var elapsed = (now - first.Start).TotalSeconds;
         return done < 0.01 || elapsed < 10 ? null : (int)(elapsed * (1 - p) / done);
     }
+
+    private static string? ExternalSubtitle(Video video, string file) =>
+        video.GetMediaStreams()
+            .Where(s => s.Type == MediaStreamType.Subtitle && s.IsExternal && !string.IsNullOrEmpty(s.Path))
+            .Select(s => s.Path!)
+            .FirstOrDefault(p => string.Equals(System.IO.Path.GetFileName(p), file, StringComparison.Ordinal));
+
+    // Language token of a file from elsewhere (for the name of a corrected copy).
+    private static string ForeignLanguage(Video video, string path)
+    {
+        var stem = System.IO.Path.GetFileNameWithoutExtension(path);
+        var prefix = System.IO.Path.GetFileNameWithoutExtension(video.Path) + ".";
+        var rest = stem.StartsWith(prefix, StringComparison.Ordinal) ? stem[prefix.Length..] : string.Empty;
+        return Lang.FileToken(rest.Split('.')[0]);
+    }
+
+    // A restore target must be an .srt of this video, directly in its folder or its metadata folder.
+    private static bool IsSubtitlePathOf(Video video, string path)
+    {
+        if (!path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) || !System.IO.Path.IsPathFullyQualified(path))
+        {
+            return false;
+        }
+
+        var full = System.IO.Path.GetFullPath(path);
+        var dir = System.IO.Path.GetDirectoryName(full);
+        var name = System.IO.Path.GetFileName(full);
+        var stem = System.IO.Path.GetFileNameWithoutExtension(video.Path) + ".";
+        return name.StartsWith(stem, StringComparison.Ordinal)
+            && new[] { video.ContainingFolderPath, video.GetInternalMetadataPath() }
+                .Where(d => !string.IsNullOrEmpty(d))
+                .Any(d => string.Equals(System.IO.Path.GetFullPath(d), dir, StringComparison.Ordinal));
+    }
+
+    private List<SubtitleTrash.StateSnapshot> Snapshot(Guid itemId, params string[] keys) =>
+        keys.Distinct(StringComparer.Ordinal).Select(k => _state.Get(itemId, k) is { } e
+                ? new SubtitleTrash.StateSnapshot { Key = k, Outcome = e.Outcome, Detail = e.Detail, Reference = e.Reference }
+                : new SubtitleTrash.StateSnapshot { Key = k })
+            .ToList();
 
     private (string Origin, string? Language, string Tag) OwnFile(Video video, string path)
     {

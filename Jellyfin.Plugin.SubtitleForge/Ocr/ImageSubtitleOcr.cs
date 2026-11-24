@@ -16,7 +16,7 @@ namespace Jellyfin.Plugin.SubtitleForge.Ocr;
 public sealed record OcrResult(List<SubtitleCue> Cues, double MeanConfidence, int LowConfidenceLines, bool AllForced);
 
 /// <summary>
-/// Converts a PGS stream into text cues: decode → split lines → recognize → post-process → merge.
+/// Converts a PGS stream into text cues: decode → split lines → recognize → post-process → merge → (optional) word-list pass.
 /// </summary>
 public static class ImageSubtitleOcr
 {
@@ -40,6 +40,32 @@ public static class ImageSubtitleOcr
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Result.</returns>
     public static OcrResult Convert(IEnumerable<PgsSubtitle> subs, PaddleRecognizer recognizer, IProgress<double>? progress, CancellationToken cancellationToken)
+        => Convert(subs, recognizer, null, false, progress, cancellationToken);
+
+    /// <summary>
+    /// Runs OCR on a .sup stream, optionally with the word-list correction pass.
+    /// </summary>
+    /// <param name="sup">PGS data.</param>
+    /// <param name="recognizer">Recognizer.</param>
+    /// <param name="language">Subtitle language (any code), selects the word list.</param>
+    /// <param name="dictionaryCorrection">Whether <see cref="OcrDictionary"/> corrects the recognized text.</param>
+    /// <param name="progress">Progress 0..1.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Result.</returns>
+    public static OcrResult Convert(Stream sup, PaddleRecognizer recognizer, string? language, bool dictionaryCorrection, IProgress<double>? progress, CancellationToken cancellationToken)
+        => Convert(PgsParser.Enumerate(sup), recognizer, language, dictionaryCorrection, progress, cancellationToken);
+
+    /// <summary>
+    /// Runs OCR on already decoded image subtitles (PGS or VobSub), optionally with the word-list correction pass.
+    /// </summary>
+    /// <param name="subs">Decoded subtitles in display order.</param>
+    /// <param name="recognizer">Recognizer.</param>
+    /// <param name="language">Subtitle language (any code), selects the word list.</param>
+    /// <param name="dictionaryCorrection">Whether <see cref="OcrDictionary"/> corrects the recognized text.</param>
+    /// <param name="progress">Progress 0..1.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Result.</returns>
+    public static OcrResult Convert(IEnumerable<PgsSubtitle> subs, PaddleRecognizer recognizer, string? language, bool dictionaryCorrection, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(subs);
         var cues = new List<SubtitleCue>();
@@ -96,6 +122,16 @@ public static class ImageSubtitleOcr
             if (total > 0)
             {
                 progress?.Report((double)i / total);
+            }
+        }
+
+        if (dictionaryCorrection && cues.Count > 0)
+        {
+            // Second pass over the whole subtitle: word-list / self-frequency based confusion fixes.
+            var corrected = OcrDictionary.Correct(cues.ConvertAll(c => c.Text), language);
+            for (var c = 0; c < cues.Count; c++)
+            {
+                cues[c] = cues[c] with { Text = corrected[c] };
             }
         }
 

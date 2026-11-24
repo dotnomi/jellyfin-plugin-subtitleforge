@@ -77,6 +77,7 @@
                     <div class="sf-toolbar">
                         <input type="search" id="sfFilter" />
                         <label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" id="sfOnlyMissing" /><span data-t="onlyMissing">Only with missing languages</span></label>
+                        <select id="sfMissingLang"><option value="" data-t="anyLang">Missing: any language</option></select>
                         <label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" id="sfReplace" checked /><span data-t="whisperReplaces">Whisper replaces downloaded subtitles</span></label>
                         <button is="emby-button" type="button" class="raised" id="sfReload"><span data-t="reload">Refresh</span></button>
                     </div>
@@ -106,6 +107,18 @@
                     <table class="sf">
                         <thead><tr><th data-t="colLibrary">Library</th><th data-t="colLanguage">Language</th><th data-t="colCoverage">Coverage</th><th></th><th data-t="colByPlugin">of which by the plugin</th></tr></thead>
                         <tbody id="sfStatRows"></tbody>
+                    </table>
+                    <h3 data-t="hSources">Sources</h3>
+                    <p class="sf-detail" data-t="sourcesHelp">Saved downloads and downloads that were rejected or did not match the audio. Sources that fit often are ranked up a little (never above a hash or release group match).</p>
+                    <table class="sf">
+                        <thead><tr><th data-t="colSource">Source</th><th data-t="colSaved">Saved</th><th data-t="colFailed">Rejected / not matching</th><th data-t="colBonus">Ranking</th></tr></thead>
+                        <tbody id="sfSourceRows"></tbody>
+                    </table>
+                    <h3 data-t="hTrash">Recently deleted</h3>
+                    <p class="sf-detail" data-t="trashHelp">Deleted or rejected subtitles of SubtitleForge stay restorable for a while (setting "Keep deleted subtitles").</p>
+                    <table class="sf">
+                        <thead><tr><th data-t="colTitleFile">Title / file</th><th data-t="colDeleted">Deleted</th><th></th></tr></thead>
+                        <tbody id="sfTrashRows"></tbody>
                     </table>
                 </div>
 
@@ -164,6 +177,13 @@
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="SpokenTextOnly" type="checkbox" is="emby-checkbox" /><span data-t="spokenOnly">Show spoken text only</span></label>
                         <div class="fieldDescription checkboxFieldDescription" data-t="spokenOnlyHelp">Removes sound and music descriptions like [SCREAMING] or (gunshots) and speaker names like "JOHN:" from every subtitle the plugin writes (downloads, OCR, Whisper). Embedded tracks and other files stay unchanged.</div></div>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="RemoveLyrics" type="checkbox" is="emby-checkbox" /><span data-t="removeLyrics">Also remove song lyrics (♪)</span></label></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="PolishFixEncoding" type="checkbox" is="emby-checkbox" /><span data-t="polishEncoding">Repair broken umlauts and special characters</span></label>
+                        <div class="fieldDescription checkboxFieldDescription" data-t="polishEncodingHelp">Fixes wrongly encoded text like "Ã¤" (ä) or "â€™" (’) and removes invisible control characters in every subtitle the plugin writes.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="PolishWrapLines" type="checkbox" is="emby-checkbox" /><span data-t="polishWrap">Re-break long lines</span></label>
+                        <div class="fieldDescription checkboxFieldDescription" data-t="polishWrapHelp">Breaks lines that are too long at the most balanced space (two lines preferred). Dialogue lines starting with "- " stay on their own line.</div></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="PolishMaxLineLength" data-t="polishMaxLine">Maximum characters per line</label><input id="PolishMaxLineLength" type="number" step="1" min="20" max="80" is="emby-input" /></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="PolishMinDuration" type="checkbox" is="emby-checkbox" /><span data-t="polishMinDuration">Show short subtitles long enough to read</span></label>
+                        <div class="fieldDescription checkboxFieldDescription" data-t="polishMinDurationHelp">Extends cues that disappear too quickly for their length (at least 1 s, at most 7 s), only into the gap before the next subtitle. Start times never change.</div></div>
 
                     <h2 class="sectionTitle" data-t="hLibraries">Libraries</h2>
                     <div id="sfLibraries"></div>
@@ -177,6 +197,7 @@
                     <p class="sf-detail" data-t="ocrHelp">Converts Blu-ray (PGS) and DVD (VobSub) image subtitles.</p>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="OcrIncludeUndefined" type="checkbox" is="emby-checkbox" /><span data-t="ocrUndefined">Also convert tracks without a language</span></label></div>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="OcrSkipIfTextExists" type="checkbox" is="emby-checkbox" /><span data-t="ocrSkip">Skip if an embedded text track of the same language exists</span></label></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="OcrDictionaryCorrection" type="checkbox" is="emby-checkbox" /><span data-t="ocrDictionary">Correct typical OCR letter confusions with a word list (e.g. "rnorning" → "morning")</span></label></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OcrThreads" data-t="ocrThreads">CPU threads for OCR (1–2 for a NAS)</label><input id="OcrThreads" type="number" step="1" min="1" max="16" is="emby-input" /></div>
 
                     <h2 class="sectionTitle" data-t="hAss">ASS/SSA and forced</h2>
@@ -188,6 +209,8 @@
                     <h2 class="sectionTitle" data-t="hDownload">Downloading subtitles</h2>
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="DownloadOnlySafeMatches" type="checkbox" is="emby-checkbox" /><span data-t="safeOnly">Without the audio check, only save safe matches</span></label>
                         <div class="fieldDescription checkboxFieldDescription" data-t="safeOnlyHelp">Safe = same file (hash) or same release group and source. With the sync check (below) enabled, other releases are taken too if they demonstrably fit the audio.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="LearnSourceQuality" type="checkbox" is="emby-checkbox" /><span data-t="learnSources">Learn which sources fit</span></label>
+                        <div class="fieldDescription checkboxFieldDescription" data-t="learnSourcesHelp">Sources whose subtitles are often kept get a small ranking bonus, sources that are often rejected a small malus. See Statistics.</div></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DownloadRetryDays" data-t="retryDays">Search again after (days)</label><input id="DownloadRetryDays" type="number" step="1" min="1" max="365" is="emby-input" /></div>
                     <h3>SubDL</h3>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="SubDlApiKey" data-t="subdlKey">API key (free at subdl.com → account → API)</label><input id="SubDlApiKey" type="password" autocomplete="off" is="emby-input" /></div>
@@ -251,7 +274,21 @@
                         <div class="fieldDescription checkboxFieldDescription" data-t="activityHelp">After every run (OCR, download, sync, new items): what was created. See Dashboard → Activity.</div></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="NotifyWebhookUrl" data-t="webhook">Webhook URL (optional: ntfy, Gotify, Discord or JSON)</label><input id="NotifyWebhookUrl" type="text" autocomplete="off" is="emby-input" />
                         <div class="fieldDescription" data-t="webhookHelp" data-html="1">e.g. <code>https://ntfy.sh/my-topic</code>, <code>https://gotify.example/message?token=…</code> or a Discord webhook.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="WeeklyReport" type="checkbox" is="emby-checkbox" /><span data-t="weekly">Send a weekly report</span></label>
+                        <div class="fieldDescription checkboxFieldDescription" data-t="weeklyHelp">What was downloaded, translated, generated or converted during the week, and which titles still have no fitting subtitle. Goes to the activity log and the webhook.</div></div>
+                    <div class="selectContainer"><label class="selectLabel" for="WeeklyReportDay" data-t="weeklyDay">Day</label><select id="WeeklyReportDay" is="emby-select">
+                        <option value="1" data-t="d1">Monday</option><option value="2" data-t="d2">Tuesday</option><option value="3" data-t="d3">Wednesday</option><option value="4" data-t="d4">Thursday</option><option value="5" data-t="d5">Friday</option><option value="6" data-t="d6">Saturday</option><option value="0" data-t="d0">Sunday</option></select></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WeeklyReportHour" data-t="weeklyHour">Hour (0–23)</label><input id="WeeklyReportHour" type="number" step="1" min="0" max="23" is="emby-input" /></div>
                     <div><button is="emby-button" type="button" class="raised" id="sfNotifyTest"><span data-t="notifyTest">Send a test message</span></button></div>
+
+                    <h2 class="sectionTitle" data-t="hMaintenance">Recycle bin and backup</h2>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="TrashDays" data-t="trashDays">Keep deleted subtitles (days, 0 = delete immediately)</label><input id="TrashDays" type="number" step="1" min="0" max="365" is="emby-input" /></div>
+                    <p class="sf-detail" data-t="backupHelp">Export saves all settings as a file – without API keys, passwords and the webhook. Import takes over the settings of such a file; your keys stay as they are. Save afterwards.</p>
+                    <div class="sf-toolbar">
+                        <button is="emby-button" type="button" class="raised" id="sfExport"><span data-t="export">Export settings</span></button>
+                        <button is="emby-button" type="button" class="raised" id="sfImport"><span data-t="import">Import settings</span></button>
+                        <input type="file" id="sfImportFile" accept="application/json,.json" style="display:none" />
+                    </div>
 
                     <div><button is="emby-button" type="submit" class="raised button-submit block emby-button"><span data-t="save">Save</span></button></div>
                     <p data-t="saveHelp">After saving, reload the web client (F5) so the new style applies.</p>
@@ -285,11 +322,18 @@
                     hContent: 'Inhalt', spokenOnly: 'Nur gesprochenen Text zeigen',
                     spokenOnlyHelp: 'Entfernt Geräusch- und Musikbeschreibungen wie [SCREAMING] oder (Schüsse) und Sprechernamen wie „JOHN:“ aus allen Untertiteln, die das Plugin schreibt (Downloads, OCR, Whisper). Eingebettete Spuren und fremde Dateien bleiben unverändert.',
                     removeLyrics: 'Auch Liedtexte (♪) entfernen',
+                    polishEncoding: 'Kaputte Umlaute und Sonderzeichen reparieren',
+                    polishEncodingHelp: 'Repariert falsch kodierten Text wie „Ã¤“ (ä) oder „â€™“ (’) und entfernt unsichtbare Steuerzeichen in allen Untertiteln, die das Plugin schreibt.',
+                    polishWrap: 'Lange Zeilen neu umbrechen',
+                    polishWrapHelp: 'Bricht zu lange Zeilen am ausgewogensten Leerzeichen um (bevorzugt zwei Zeilen). Dialogzeilen mit „- “ bleiben in einer eigenen Zeile.',
+                    polishMaxLine: 'Maximale Zeichen pro Zeile',
+                    polishMinDuration: 'Kurze Untertitel lange genug zum Lesen zeigen',
+                    polishMinDurationHelp: 'Verlängert Untertitel, die für ihre Länge zu schnell verschwinden (mindestens 1 s, höchstens 7 s), nur in die Lücke vor dem nächsten Untertitel. Startzeiten bleiben unverändert.',
                     hLibraries: 'Bibliotheken', librariesHelp: 'Das Plugin bearbeitet nur Filme und Folgen in den angehakten Bibliotheken. Nichts angehakt = alle Bibliotheken.',
                     hLanguages: 'Sprachen', defaultLangs: 'Standard-Sprachen (z. B. de,en)',
                     defaultLangsHelp: 'Gilt, wenn weder ein Tag <code>subs:…</code> an Film/Serie noch die Bibliothekseinstellung „Untertitel herunterladen → Sprachen“ etwas festlegt.',
                     hOcr: 'Bild-Untertitel → Text (OCR)', ocrHelp: 'Wandelt Bild-Untertitel von Blu-ray (PGS) und DVD (VobSub) um.',
-                    ocrUndefined: 'Auch Spuren ohne Sprachangabe umwandeln', ocrSkip: 'Überspringen, wenn bereits eine eingebettete Textspur gleicher Sprache existiert', ocrThreads: 'CPU-Threads für OCR (1–2 für NAS)',
+                    ocrUndefined: 'Auch Spuren ohne Sprachangabe umwandeln', ocrSkip: 'Überspringen, wenn bereits eine eingebettete Textspur gleicher Sprache existiert', ocrDictionary: 'Typische OCR-Buchstabenverwechslungen per Wortliste korrigieren (z. B. „rnein“ → „mein“)', ocrThreads: 'CPU-Threads für OCR (1–2 für NAS)',
                     hAss: 'ASS/SSA und Forced', assConvert: 'Eingebettete ASS/SSA-Untertitel zusätzlich als sauberes SRT anlegen',
                     assConvertHelp: 'Für Anime: Dialog und Liedtexte als Spur „[SF] Text“, die dem einheitlichen Stil folgt. Schilder/Typesetting fallen dabei weg; die Original-ASS-Spur bleibt auswählbar. Läuft mit der OCR-Aufgabe.',
                     forced: 'Forced-Untertitel (Schilder, Lieder, fremdsprachige Stellen) ergänzen',
@@ -329,6 +373,18 @@
                     activityHelp: 'Nach jedem Lauf (OCR, Download, Sync, neue Einträge): was neu entstanden ist. Zu sehen unter Dashboard → Aktivität.',
                     webhook: 'Webhook-URL (optional: ntfy, Gotify, Discord oder JSON)',
                     webhookHelp: 'z. B. <code>https://ntfy.sh/mein-thema</code>, <code>https://gotify.example/message?token=…</code> oder ein Discord-Webhook.',
+                    anyLang: 'Fehlend: beliebige Sprache', hSources: 'Quellen',
+                    sourcesHelp: 'Gespeicherte Downloads und Downloads, die verworfen wurden oder nicht zur Tonspur passten. Quellen, die oft passen, rücken in der Rangfolge etwas nach oben (nie über einen Hash- oder Release-Gruppen-Treffer).',
+                    colSource: 'Quelle', colSaved: 'Gespeichert', colFailed: 'Verworfen / unpassend', colBonus: 'Rangfolge', hTrash: 'Zuletzt gelöscht',
+                    trashHelp: 'Gelöschte oder verworfene Untertitel von SubtitleForge lassen sich eine Zeit lang wiederherstellen (Einstellung „Gelöschte Untertitel aufbewahren“).',
+                    colDeleted: 'Gelöscht', learnSources: 'Lernen, welche Quellen passen',
+                    learnSourcesHelp: 'Quellen, deren Untertitel oft behalten werden, bekommen einen kleinen Bonus in der Rangfolge, oft verworfene einen kleinen Malus. Siehe Statistik.',
+                    weekly: 'Wochenbericht senden',
+                    weeklyHelp: 'Was in der Woche heruntergeladen, übersetzt, erzeugt oder umgewandelt wurde und welche Titel noch keinen passenden Untertitel haben. Geht ins Aktivitätsprotokoll und an den Webhook.',
+                    weeklyDay: 'Tag', d0: 'Sonntag', d1: 'Montag', d2: 'Dienstag', d3: 'Mittwoch', d4: 'Donnerstag', d5: 'Freitag', d6: 'Samstag', weeklyHour: 'Stunde (0–23)',
+                    hMaintenance: 'Papierkorb und Sicherung', trashDays: 'Gelöschte Untertitel aufbewahren (Tage, 0 = sofort löschen)',
+                    backupHelp: 'Export speichert alle Einstellungen als Datei – ohne API-Keys, Passwörter und Webhook. Import übernimmt die Einstellungen aus so einer Datei; deine Keys bleiben, wie sie sind. Danach speichern.',
+                    export: 'Einstellungen exportieren', import: 'Einstellungen importieren',
                     notifyTest: 'Testnachricht senden', save: 'Speichern', saveHelp: 'Nach dem Speichern den Web-Client neu laden (F5), damit der neue Stil greift.',
                     // texts built in script
                     filter: 'Filtern (Titel) …', loading: 'Wird geladen …', none: 'Keine Einträge.', queueLoading: 'Warteschlange wird geladen …',
@@ -337,6 +393,8 @@
                     translateTitle: 'Vorhandenen Untertitel einer anderen Sprache offline in die Zielsprache übersetzen',
                     searchQueued: 'Suche für „{0}“ eingeplant.', whisperQueued: 'Whisper für „{0}“ ({1}) eingeplant. Das kann je nach Länge und CPU dauern.',
                     translateQueued: 'Übersetzung nach {0} eingeplant.', translateNone: 'Kein übersetzbarer Untertitel einer anderen Sprache vorhanden.',
+                    missingLang: 'Fehlend: {0}', restore: 'Wiederherstellen', restored: 'wiederhergestellt', restoreFailed: 'Wiederherstellen fehlgeschlagen: {0}',
+                    r_deleted: 'gelöscht', r_rejected: 'verworfen', importDone: '{0} Einstellungen übernommen. Zum Übernehmen jetzt speichern.', importBad: 'Die Datei ist keine SubtitleForge-Einstellungsdatei.',
                     batchQueued: '{0} Aufträge eingeplant.', batchNothing: 'Nichts eingeplant: kein passender Untertitel bzw. keine passende Tonspur.', batchEmpty: 'Bitte zuerst Titel auswählen.',
                     noFiles: 'Keine externen Untertitel-Dateien.', cues: '{0} Einträge',
                     rejectDl: 'Passt nicht – verwerfen und neu suchen', rejectOther: 'Passt nicht – löschen', rejectedDl: 'Verworfen und gesperrt – neue Suche ist eingeplant.', deletedMsg: 'Gelöscht.',
@@ -361,6 +419,8 @@
                     translateTitle: 'Translate an existing subtitle of another language offline into the target language',
                     searchQueued: 'Search for "{0}" scheduled.', whisperQueued: 'Whisper for "{0}" ({1}) scheduled. This can take a while, depending on the length and the CPU.',
                     translateQueued: 'Translation to {0} scheduled.', translateNone: 'There is no subtitle of another language that can be translated.',
+                    missingLang: 'Missing: {0}', restore: 'Restore', restored: 'restored', restoreFailed: 'Restore failed: {0}',
+                    r_deleted: 'deleted', r_rejected: 'rejected', importDone: '{0} settings taken over. Save now to apply them.', importBad: 'The file is not a SubtitleForge settings file.',
                     batchQueued: '{0} jobs scheduled.', batchNothing: 'Nothing scheduled: no matching subtitle or audio track.', batchEmpty: 'Select titles first.',
                     noFiles: 'No external subtitle files.', cues: '{0} cues',
                     rejectDl: "Doesn't fit – reject and search again", rejectOther: "Doesn't fit – delete", rejectedDl: 'Rejected and blocked – a new search is scheduled.', deletedMsg: 'Deleted.',
@@ -390,12 +450,12 @@
                 var fields = ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent',
                     'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
                     'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes', 'JimakuApiKey', 'WhisperLastResortAfterDays', 'WhisperLastResortPerRun',
-                    'AutoWorkStartHour', 'AutoWorkEndHour', 'NotifyWebhookUrl', 'UiLanguage'];
-                var checks = ['StyleEnabled', 'WhisperUseGpu', 'SpokenTextOnly', 'RemoveLyrics', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
+                    'AutoWorkStartHour', 'AutoWorkEndHour', 'NotifyWebhookUrl', 'UiLanguage', 'PolishMaxLineLength', 'TrashDays', 'WeeklyReportDay', 'WeeklyReportHour'];
+                var checks = ['StyleEnabled', 'WhisperUseGpu', 'SpokenTextOnly', 'RemoveLyrics', 'PolishFixEncoding', 'PolishWrapLines', 'PolishMinDuration', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'OcrDictionaryCorrection', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
                     'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems', 'ConvertAssToSrt', 'DeriveForcedSubtitles',
-                    'WhisperLastResort', 'GpuSelfTest', 'PauseDuringPlayback', 'AutoWorkWindowEnabled', 'NotifyActivityLog', 'TranslateExistingSubtitles'];
+                    'WhisperLastResort', 'GpuSelfTest', 'PauseDuringPlayback', 'AutoWorkWindowEnabled', 'NotifyActivityLog', 'TranslateExistingSubtitles', 'LearnSourceQuality', 'WeeklyReport'];
                 var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes',
-                    'WhisperLastResortAfterDays', 'WhisperLastResortPerRun', 'AutoWorkStartHour', 'AutoWorkEndHour'];
+                    'WhisperLastResortAfterDays', 'WhisperLastResortPerRun', 'AutoWorkStartHour', 'AutoWorkEndHour', 'PolishMaxLineLength', 'TrashDays', 'WeeklyReportDay', 'WeeklyReportHour'];
                 var LANG_CODES = ['de', 'en', 'ja', 'fr', 'es', 'it'];
                 var page = document.querySelector('#SubtitleForgeConfigPage');
                 var rows = [];
@@ -486,7 +546,11 @@
                 /* ---------- Overview ---------- */
                 function shownRows() {
                     var filter = (page.querySelector('#sfFilter').value || '').toLowerCase();
-                    return rows.filter(function (r) { return !filter || r.Name.toLowerCase().indexOf(filter) >= 0; });
+                    var missing = page.querySelector('#sfMissingLang').value;
+                    return rows.filter(function (r) {
+                        return (!filter || r.Name.toLowerCase().indexOf(filter) >= 0)
+                            && (!missing || r.Languages.some(function (l) { return l.Language === missing && l.Have.length === 0; }));
+                    });
                 }
 
                 function updateBatch() {
@@ -667,7 +731,57 @@
                     });
                 })();
 
+                function loadSources() {
+                    var tbody = page.querySelector('#sfSourceRows');
+                    tbody.innerHTML = '';
+                    api('GET', 'SubtitleForge/Sources').then(function (list) {
+                        if (!list.length) { tbody.appendChild(el('tr')).appendChild(el('td', { colspan: 4 }, t('none'))); return; }
+                        list.forEach(function (r) {
+                            var tr = el('tr');
+                            tr.appendChild(el('td', {}, r.source));
+                            tr.appendChild(el('td', {}, String(r.saved)));
+                            tr.appendChild(el('td', {}, String(r.failed)));
+                            tr.appendChild(el('td', {}, (r.bonus > 0 ? '+' : '') + r.bonus));
+                            tbody.appendChild(tr);
+                        });
+                    });
+                }
+
+                function loadTrash() {
+                    var tbody = page.querySelector('#sfTrashRows');
+                    tbody.innerHTML = '';
+                    api('GET', 'SubtitleForge/Trash').then(function (list) {
+                        if (!list.length) { tbody.appendChild(el('tr')).appendChild(el('td', { colspan: 3 }, t('none'))); return; }
+                        list.forEach(function (e) {
+                            var tr = el('tr');
+                            var td = el('td');
+                            td.appendChild(el('div', {}, e.name || '?'));
+                            td.appendChild(el('div', { 'class': 'sf-detail' }, e.file));
+                            tr.appendChild(td);
+                            tr.appendChild(el('td', {}, new Date(e.deleted).toLocaleString() + ' · ' + t('r_' + e.reason)));
+                            var act = el('td');
+                            var b = button(t('restore'));
+                            b.addEventListener('click', function () {
+                                b.disabled = true;
+                                api('POST', 'SubtitleForge/Trash/' + e.id + '/Restore').then(function () {
+                                    b.querySelector('span').textContent = t('restored');
+                                    tr.style.opacity = '.5';
+                                }, function (err) {
+                                    b.disabled = false;
+                                    var msg = err && err.responseText ? err.responseText : (err && err.status ? 'HTTP ' + err.status : '');
+                                    if (err && typeof err.text === 'function') { err.text().then(function (x) { Dashboard.alert(fmt('restoreFailed', x)); }); } else { Dashboard.alert(fmt('restoreFailed', msg)); }
+                                });
+                            });
+                            act.appendChild(b);
+                            tr.appendChild(act);
+                            tbody.appendChild(tr);
+                        });
+                    });
+                }
+
                 function loadStats() {
+                    loadSources();
+                    loadTrash();
                     var tbody = page.querySelector('#sfStatRows');
                     tbody.innerHTML = '<tr><td colspan="5">' + t('loading') + '</td></tr>';
                     api('GET', 'SubtitleForge/Stats').then(function (libs) {
@@ -810,12 +924,60 @@
 
                 page.querySelectorAll('.sf-tab').forEach(function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
                 page.querySelector('#sfFilter').addEventListener('input', renderRows);
+                (function () {
+                    var sel = page.querySelector('#sfMissingLang');
+                    LANG_CODES.forEach(function (c) { sel.appendChild(el('option', { value: c }, fmt('missingLang', c.toUpperCase()))); });
+                    sel.addEventListener('change', function () {
+                        // A language filter only makes sense on titles with gaps: load them if needed.
+                        if (sel.value && !page.querySelector('#sfOnlyMissing').checked) { page.querySelector('#sfOnlyMissing').checked = true; loadReport(); } else { renderRows(); }
+                    });
+                })();
                 page.querySelector('#sfOnlyMissing').addEventListener('change', loadReport);
                 page.querySelector('#sfReload').addEventListener('click', function () { loadReport(); refreshQueue(); });
                 page.querySelector('#sfGpuTest').addEventListener('click', function () {
                     var out = page.querySelector('#sfGpuTestResult');
                     out.textContent = t('gpuRunning');
                     api('POST', 'SubtitleForge/Hardware/Test').then(function (r) { out.textContent = r.result; }, function () { out.textContent = t('gpuFailed'); });
+                });
+                // Settings backup without secrets (keys, passwords, webhook with its token) and server-specific ids.
+                var SECRET = ['SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'JimakuApiKey', 'NotifyWebhookUrl', 'Libraries', 'BrandMigrationDone'];
+                page.querySelector('#sfExport').addEventListener('click', function () {
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        var out = { subtitleForgeSettings: 1 };
+                        Object.keys(config).forEach(function (k) { if (SECRET.indexOf(k) < 0) { out[k] = config[k]; } });
+                        var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+                        var a = el('a', { href: URL.createObjectURL(blob), download: 'subtitleforge-settings.json' });
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+                    });
+                });
+                page.querySelector('#sfImport').addEventListener('click', function () { page.querySelector('#sfImportFile').click(); });
+                page.querySelector('#sfImportFile').addEventListener('change', function (e) {
+                    var file = e.target.files && e.target.files[0];
+                    e.target.value = '';
+                    if (!file || file.size > 1000000) { if (file) { Dashboard.alert(t('importBad')); } return; }
+                    file.text().then(function (text) {
+                        var data;
+                        try { data = JSON.parse(text); } catch (x) { data = null; }
+                        if (!data || typeof data !== 'object' || data.subtitleForgeSettings !== 1) { Dashboard.alert(t('importBad')); return; }
+                        var n = 0;
+                        // Only known form fields of the same type; never secrets.
+                        fields.concat(checks).forEach(function (f) {
+                            if (SECRET.indexOf(f) >= 0 || !Object.prototype.hasOwnProperty.call(data, f)) { return; }
+                            var v = data[f];
+                            var input = page.querySelector('#' + f);
+                            if (checks.indexOf(f) >= 0) {
+                                if (typeof v === 'boolean') { input.checked = v; n++; }
+                            } else if (numbers.indexOf(f) >= 0) {
+                                if (typeof v === 'number' && isFinite(v)) { input.value = v; n++; }
+                            } else if (typeof v === 'string' && v.length <= 500) {
+                                input.value = v; n++;
+                            }
+                        });
+                        updatePreview();
+                        Dashboard.alert(fmt('importDone', n));
+                    });
                 });
                 page.querySelector('#sfNotifyTest').addEventListener('click', function () {
                     ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('SubtitleForge/Notify/Test') }).then(function () { Dashboard.alert(t('notifySent')); });

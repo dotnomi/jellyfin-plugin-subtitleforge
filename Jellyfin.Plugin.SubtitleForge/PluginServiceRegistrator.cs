@@ -53,6 +53,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<Whisper.GpuSelfTest>());
         serviceCollection.AddSingleton<BrandMigration>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<BrandMigration>());
+        serviceCollection.AddSingleton<WeeklyReport>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<WeeklyReport>());
         serviceCollection.AddSingleton<WorkQueue>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<WorkQueue>());
     }

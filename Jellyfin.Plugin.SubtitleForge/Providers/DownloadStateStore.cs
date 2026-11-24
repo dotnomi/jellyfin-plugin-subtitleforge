@@ -42,6 +42,54 @@ public class DownloadStateStore
     }
 
     /// <summary>
+    /// Removes an entry.
+    /// </summary>
+    /// <param name="itemId">Item id.</param>
+    /// <param name="language">Key.</param>
+    public void Remove(Guid itemId, string language)
+    {
+        if (Load().TryRemove(Key(itemId, language), out _))
+        {
+            Save();
+        }
+    }
+
+    /// <summary>
+    /// Lifts a block set by <see cref="Block"/>.
+    /// </summary>
+    /// <param name="itemId">Item.</param>
+    /// <param name="language">Language.</param>
+    /// <param name="reference">Source + reference.</param>
+    public void Unblock(Guid itemId, string language, string reference)
+    {
+        var key = Key(itemId, "block:" + language);
+        var entries = Load();
+        if (!entries.TryGetValue(key, out var e))
+        {
+            return;
+        }
+
+        var rest = (e.Detail ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(r => r != reference).ToList();
+        if (rest.Count == 0)
+        {
+            entries.TryRemove(key, out _);
+        }
+        else
+        {
+            entries[key] = new Entry { LastTriedUtc = e.LastTriedUtc, Outcome = "blocked", Detail = string.Join('\n', rest) };
+        }
+
+        Save();
+    }
+
+    /// <summary>
+    /// All entries (for summaries).
+    /// </summary>
+    /// <returns>Key and entry.</returns>
+    public System.Collections.Generic.IReadOnlyList<(Guid ItemId, string Key, Entry Entry)> All() =>
+        Load().Select(kv => (Guid.TryParseExact(kv.Key.Split(':')[0], "N", out var g) ? g : Guid.Empty, kv.Key[(kv.Key.IndexOf(':', StringComparison.Ordinal) + 1)..], kv.Value)).ToList();
+
+    /// <summary>
     /// Blocks a downloaded subtitle so it is never chosen again for this item and language.
     /// </summary>
     /// <param name="itemId">Item.</param>

@@ -40,6 +40,8 @@ consistent style in the web client.
 - Every subtitle the plugin writes is clean SRT, without font or colour tags. That way the app settings on Android TV,
   Fire TV and phones apply evenly too.
 - Optional: removes non-speech captions like `[SCREAMING]`, `(gunshots)` or `JOHN:`, and optionally song lyrics.
+- Repairs broken umlauts and encoding mistakes (`Ã¤` → `ä`). Optional: re-wraps long lines (max. 42 characters) and
+  keeps very short subtitles on screen long enough to read.
 - Optional: converts embedded ASS/SSA subtitles (anime typesetting) into clean SRT, so they follow the style.
 - A **live preview** on the settings page shows the style on a player-like picture, on a dark and a bright scene.
 - Every file the plugin writes carries the mark **`[SF]`** in its track name (e.g. `[SF] SubDL`, `[SF] OCR`,
@@ -48,6 +50,7 @@ consistent style in the web client.
 **Getting subtitles**
 - **OCR:** converts image subtitles to text: Blu-ray (PGS) and DVD (VobSub). Uses its own decoders and PaddleOCR
   (PP-OCRv5), runs fully offline, typically 98–99 % character confidence.
+  A word list pass (English and German) fixes typical letter confusions like `rnorning` → `morning` or `Iassen` → `lassen`.
 - **Downloads** from SubDL, OpenSubtitles.com and Jimaku (anime).
   - Candidates are ranked by release group, source, resolution and episode.
   - OpenSubtitles hash matches are preferred.
@@ -70,18 +73,25 @@ consistent style in the web client.
   page), plus a CC button on the item page, for administrators. From there you can search, translate, start Whisper
   or **delete single subtitles** the plugin made, also for a whole season or series at once.
 - Works with Jellyfin's **multi-select**: select several titles, open the "⋮" menu, choose SubtitleForge.
+- **In the player:** a button next to Jellyfin's subtitle button opens the subtitle that is playing right now. From
+  there: *other match* (reject and search again), *check sync* against the audio, or shift the timing earlier/later
+  (±0.25 s, ±1 s). The player reloads the subtitle right away. The same tools are in the file list of every title.
+- **Recycle bin:** deleted or rejected subtitles stay restorable for 30 days (adjustable), per title or in the statistics.
 - An **overview page** with its own entry in the dashboard sidebar. It shows:
   - per title, which languages exist, where they came from, and why something is missing
   - a preview of every subtitle file, with a *doesn't fit* button (the download is blocked and searched again)
   - a **job list** with progress, remaining time per job and in total
   - **batch actions:** tick titles (or "all with missing languages") and search, translate or run Whisper for all of them
-  - **statistics:** coverage per library and language
+  - a filter for titles that miss one specific language
+  - **statistics:** coverage per library and language, and what the plugin learned about each source
   - a **sync report:** checks all external subtitles against the audio without changing anything, then fixes them on request. Files the plugin did not make get a corrected copy, the original stays untouched.
 - Choose which **libraries** the plugin works on. Set languages per series or movie with a tag (`subs:de,en`).
 - Respects viewers: heavy work **pauses while someone is watching** (a running Whisper job is suspended and resumed).
   Automatic work can be limited to a **time window**, e.g. 1–7 am.
 - A **summary** after every run goes to Jellyfin's activity log. Optionally it is also sent via webhook (ntfy, Gotify,
-  Discord or plain JSON).
+  Discord or plain JSON). An optional **weekly report** sums up the week and lists titles still without a fitting subtitle.
+- **Learns which sources fit:** downloads you keep raise a source a little in the ranking, rejected ones lower it.
+- **Settings backup:** export and import all settings as a file, without API keys, passwords and webhook.
 - **Crash-safe:** Whisper runs in a separate process.
   - If a GPU driver crashes, Jellyfin keeps running and the job is redone on the CPU.
   - A short GPU self-test after startup shows driver problems right away.

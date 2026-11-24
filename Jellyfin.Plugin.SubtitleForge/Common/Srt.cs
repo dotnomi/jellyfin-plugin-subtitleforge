@@ -103,6 +103,17 @@ public static partial class Srt
             cues = SpokenTextFilter.Apply(cues.Select(c => c with { Text = NormalizeText(c.Text) }), true);
         }
 
+        // Final polish (encoding repair, line breaks, reading time) on exactly the cues that get written.
+        var polish = PolishOptions.FromConfig(config);
+        if (polish.Any)
+        {
+            var kept = cues.Select(c => c with { Text = NormalizeText(c.Text) })
+                .Where(c => c.Text.Length > 0 && c.EndMs > c.StartMs)
+                .OrderBy(c => c.StartMs)
+                .ToList();
+            cues = SubtitlePolish.Apply(kept, polish);
+        }
+
         var sb = new StringBuilder();
         var n = 1;
         foreach (var cue in cues.OrderBy(c => c.StartMs))

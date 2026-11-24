@@ -16,8 +16,9 @@ public static class CandidateRanker
     /// <param name="candidates">Candidates.</param>
     /// <param name="query">Query (with parsed release of the local file).</param>
     /// <param name="preferHearingImpaired">Whether HI subtitles are preferred.</param>
+    /// <param name="sourceBonus">Learned points per source (see <see cref="SourceStats"/>).</param>
     /// <returns>Sorted list.</returns>
-    public static List<SubtitleCandidate> Rank(IEnumerable<SubtitleCandidate> candidates, SubtitleQuery query, bool preferHearingImpaired = false)
+    public static List<SubtitleCandidate> Rank(IEnumerable<SubtitleCandidate> candidates, SubtitleQuery query, bool preferHearingImpaired = false, IReadOnlyDictionary<string, int>? sourceBonus = null)
     {
         var file = query.Release;
         var list = new List<SubtitleCandidate>();
@@ -89,6 +90,11 @@ public static class CandidateRanker
             if (c.Downloads is > 0)
             {
                 Add(c, (int)Math.Min(30, Math.Log10(c.Downloads.Value + 1) * 8), "popular");
+            }
+
+            if (sourceBonus is not null && sourceBonus.TryGetValue(c.Source, out var bonus) && bonus != 0)
+            {
+                Add(c, Math.Clamp(bonus, -SourceStats.MaxBonus, SourceStats.MaxBonus), "source-history");
             }
 
             list.Add(c);

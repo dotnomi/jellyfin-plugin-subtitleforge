@@ -336,13 +336,13 @@ public sealed class ItemProcessor : IDisposable
                     var idx = await _ffmpeg.ReadExtradataTextAsync(video.Path, specifier, cancellationToken).ConfigureAwait(false) ?? string.Empty;
                     await _ffmpeg.ExtractStreamAsync(video.Path, specifier, "vob", sup, cancellationToken).ConfigureAwait(false);
                     await using var fs = File.OpenRead(sup);
-                    result = ImageSubtitleOcr.Convert(VobSubParser.Parse(idx, fs), recognizer, null, cancellationToken);
+                    result = ImageSubtitleOcr.Convert(VobSubParser.Parse(idx, fs), recognizer, job.Stream.Language, config.OcrDictionaryCorrection, null, cancellationToken);
                 }
                 else
                 {
                     await _ffmpeg.ExtractStreamAsync(video.Path, specifier, "sup", sup, cancellationToken).ConfigureAwait(false);
                     await using var fs = File.OpenRead(sup);
-                    result = ImageSubtitleOcr.Convert(fs, recognizer, null, cancellationToken);
+                    result = ImageSubtitleOcr.Convert(fs, recognizer, job.Stream.Language, config.OcrDictionaryCorrection, null, cancellationToken);
                 }
 
                 if (result.Cues.Count == 0)
@@ -702,6 +702,7 @@ public sealed class ItemProcessor : IDisposable
                     else if (!alignment.IsConfident)
                     {
                         rejected.Add(candidate.DisplayName);
+                        SourceStats.Failed(candidate.Source);
                         _logger.LogInformation(
                             "SubtitleForge: rejected {Source} {Release} for {Name}: does not match the audio ({Alignment})",
                             candidate.Source,
@@ -736,6 +737,7 @@ public sealed class ItemProcessor : IDisposable
                 var stem = SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(lang), false, candidate.Source);
                 var path = await _writer.SaveAsync(video, stem, Srt.Write(cues), cancellationToken).ConfigureAwait(false);
                 _state.Set(video.Id, lang, "saved", $"{candidate.Source}: {candidate.DisplayName} ({note})", candidate.Source + "|" + candidate.Reference);
+                SourceStats.Saved(candidate.Source);
                 _logger.LogInformation("SubtitleForge: saved {Path} from {Source} [{Reasons}]", path, candidate.Source, note);
                 return 1;
             }

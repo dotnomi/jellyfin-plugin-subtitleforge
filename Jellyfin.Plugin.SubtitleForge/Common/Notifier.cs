@@ -97,6 +97,19 @@ public class Notifier
                 : FormattableString.Invariant($"… and {count - lines.Count} more"));
         }
 
+        await DeliverAsync(title, extra ?? string.Join(", ", lines.Take(3)), body.ToString(), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends a message to the configured targets (activity log, webhook).
+    /// </summary>
+    /// <param name="title">Title.</param>
+    /// <param name="shortOverview">One line.</param>
+    /// <param name="body">Text.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Task.</returns>
+    public async Task DeliverAsync(string title, string shortOverview, string body, CancellationToken cancellationToken)
+    {
         var config = Config;
         if (config.NotifyActivityLog)
         {
@@ -104,8 +117,8 @@ public class Notifier
             {
                 await _activity.CreateAsync(new ActivityLog(title, "SubtitleForge", Guid.Empty)
                 {
-                    ShortOverview = extra ?? string.Join(", ", lines.Take(3)),
-                    Overview = body.ToString(),
+                    ShortOverview = shortOverview,
+                    Overview = body,
                     LogSeverity = LogLevel.Information,
                 }).ConfigureAwait(false);
             }
@@ -117,7 +130,7 @@ public class Notifier
 
         if (!string.IsNullOrWhiteSpace(config.NotifyWebhookUrl))
         {
-            await SendWebhookAsync(config.NotifyWebhookUrl.Trim(), title, body.ToString(), cancellationToken).ConfigureAwait(false);
+            await SendWebhookAsync(config.NotifyWebhookUrl.Trim(), title, body, cancellationToken).ConfigureAwait(false);
         }
     }
 

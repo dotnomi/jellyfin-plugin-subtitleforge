@@ -247,13 +247,19 @@ public class SubtitleFileWriter
     /// </summary>
     /// <param name="video">Video.</param>
     /// <param name="path">Full path of the subtitle file.</param>
+    /// <param name="trashReason">When set, the file goes to the recycle bin (see <see cref="SubtitleTrash"/>).</param>
+    /// <param name="states">Plugin state to restore with the file.</param>
     /// <returns>Whether it was deleted.</returns>
-    public bool DeleteFile(Video video, string path)
+    public bool DeleteFile(Video video, string path, string? trashReason = null, IReadOnlyList<SubtitleTrash.StateSnapshot>? states = null)
     {
         _libraryMonitor.ReportFileSystemChangeBeginning(path);
         try
         {
-            File.Delete(path);
+            if (trashReason is null || SubtitleTrash.Remove(video.Id, path, trashReason, states) is null)
+            {
+                File.Delete(path);
+            }
+
             _logger.LogInformation("SubtitleForge: removed {Path} (by user)", path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -268,6 +274,29 @@ public class SubtitleFileWriter
 
         _providerManager.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
         return true;
+    }
+
+    /// <summary>
+    /// Writes a subtitle file back (restore from the recycle bin, manual timing change) and refreshes the item.
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <param name="path">Full path (the caller checks it belongs to the video).</param>
+    /// <param name="bytes">Content.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Task.</returns>
+    public async Task WriteFileAsync(Video video, string path, byte[] bytes, CancellationToken cancellationToken)
+    {
+        _libraryMonitor.ReportFileSystemChangeBeginning(path);
+        try
+        {
+            await WriteAtomicAsync(path, bytes, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _libraryMonitor.ReportFileSystemChangeComplete(path, false);
+        }
+
+        _providerManager.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
     }
 
     /// <summary>
@@ -400,6 +429,7 @@ public class SubtitleFileWriter
                 _logger.LogInformation("SubtitleForge: saved {Path}", path);
                 RemoveLegacyCopy(Path.Combine(Path.GetDirectoryName(path)!, LegacyStem(stem) + ".srt"), path);
                 _notifier.Record(DisplayName(video) + ": " + stem[(Path.GetFileNameWithoutExtension(video.Path).Length + 1)..]);
+                WeeklyReport.Count(SubtitleOrigin.Classify(video.Path, path).Origin);
                 _providerManager.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
                 return path;
             }
