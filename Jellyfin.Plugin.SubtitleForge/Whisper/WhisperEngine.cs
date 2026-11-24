@@ -28,6 +28,9 @@ public static class WhisperEngine
     private static string? _helperRuntime;
     private static bool _gpuBroken;
 
+    /// <summary>Gets or sets a check whether the helper should be paused right now (someone is watching).</summary>
+    public static Func<bool>? PauseRequested { get; set; }
+
     /// <summary>Gets or sets a sink for diagnostic messages (set by the plugin to its logger).</summary>
     public static Action<string>? Diagnostics { get; set; }
 
@@ -295,16 +298,40 @@ public static class WhisperEngine
                 CancellationToken.None);
 
             using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var paused = false;
             var watchdog = Task.Run(
                 async () =>
                 {
-                    while (!stall.IsCancellationRequested)
+                    try
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(15), stall.Token).ConfigureAwait(false);
-                        if (DateTime.UtcNow - lastActivity > StallTimeout)
+                        while (!stall.IsCancellationRequested)
                         {
-                            Kill(process);
-                            return;
+                            await Task.Delay(TimeSpan.FromSeconds(5), stall.Token).ConfigureAwait(false);
+
+                            // Someone is watching: freeze the helper (SIGSTOP) and continue afterwards (SIGCONT).
+                            var pause = PauseRequested?.Invoke() ?? false;
+                            if (pause != paused && Signal(process, pause ? SigStop : SigCont))
+                            {
+                                paused = pause;
+                                Diagnostics?.Invoke(pause ? "Whisper pausiert (Wiedergabe läuft)" : "Whisper läuft weiter");
+                            }
+
+                            if (paused)
+                            {
+                                lastActivity = DateTime.UtcNow;
+                            }
+                            else if (DateTime.UtcNow - lastActivity > StallTimeout)
+                            {
+                                Kill(process);
+                                return;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (paused)
+                        {
+                            Signal(process, SigCont);
                         }
                     }
                 },
@@ -377,8 +404,27 @@ public static class WhisperEngine
         }
     }
 
+    private const int SigCont = 18;
+    private const int SigStop = 19;
+
+    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    private static extern int SysKill(int pid, int sig);
+
+    private static bool Signal(Process process, int sig)
+    {
+        try
+        {
+            return !process.HasExited && SysKill(process.Id, sig) == 0;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
+    }
+
     private static void Kill(Process process)
     {
+        Signal(process, SigCont);
         try
         {
             if (!process.HasExited)

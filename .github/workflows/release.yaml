@@ -1,0 +1,49 @@
+# Push a tag like v0.3.0.0 → builds the plugin, attaches the zip to a GitHub release and adds the version to
+# manifest.json (the Jellyfin plugin repository: https://raw.githubusercontent.com/<owner>/<repo>/main/manifest.json).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test
+        run: dotnet test Jellyfin.Plugin.SubtitleForge.Tests -c Release
+      - name: Package
+        id: pkg
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./tools/package.sh "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=dist/subtitleforge_$VERSION.zip" >> "$GITHUB_OUTPUT"
+          echo "md5=$(md5sum dist/subtitleforge_$VERSION.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/update-manifest.py changelog > dist/notes.md
+          gh release create "$GITHUB_REF_NAME" "${{ steps.pkg.outputs.zip }}" --title "SubtitleForge ${{ steps.pkg.outputs.version }}" --notes-file dist/notes.md
+      - name: Update manifest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          python3 tools/update-manifest.py add manifest.json "${{ steps.pkg.outputs.version }}" \
+            "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/subtitleforge_${{ steps.pkg.outputs.version }}.zip" \
+            "${{ steps.pkg.outputs.md5 }}"
+          git add manifest.json
+          git commit -m "manifest: ${{ steps.pkg.outputs.version }}"
+          git push origin main

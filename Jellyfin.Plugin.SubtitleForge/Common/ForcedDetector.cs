@@ -16,6 +16,31 @@ public static partial class ForcedDetector
     public const double MaxForcedCoverage = 0.25;
 
     /// <summary>
+    /// Among several tracks of the same language, the ones with only a small fraction of the cues of the largest
+    /// track (signs/songs only) are forced.
+    /// </summary>
+    /// <typeparam name="T">Track type.</typeparam>
+    /// <param name="tracks">Track, language, number of cues.</param>
+    /// <returns>Tracks to treat as forced.</returns>
+    public static IEnumerable<T> SmallTracks<T>(IEnumerable<(T Track, string Language, int Cues)> tracks)
+    {
+        foreach (var group in tracks.GroupBy(t => t.Language))
+        {
+            var list = group.ToList();
+            if (list.Count < 2)
+            {
+                continue;
+            }
+
+            var max = list.Max(t => t.Cues);
+            foreach (var t in list.Where(t => t.Cues < max * MaxForcedCoverage && t.Cues < 200))
+            {
+                yield return t.Track;
+            }
+        }
+    }
+
+    /// <summary>
     /// Whether a release name says it is forced.
     /// </summary>
     /// <param name="releases">Release names.</param>

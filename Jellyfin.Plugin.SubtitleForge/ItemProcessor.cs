@@ -53,6 +53,7 @@ public sealed class ItemProcessor : IDisposable
     /// <summary>State: a fitting subtitle may exist but the source's daily limit was reached; retried next run.</summary>
     public const string WaitingForQuota = "waiting-quota";
 
+    private static readonly HashSet<string> AssCodecs = new(StringComparer.OrdinalIgnoreCase) { "ass", "ssa" };
     private static readonly HashSet<string> PgsCodecs = new(StringComparer.OrdinalIgnoreCase) { "pgssub", "hdmv_pgs_subtitle", "pgs", "sup" };
     private static readonly HashSet<string> ImageCodecs = new(StringComparer.OrdinalIgnoreCase) { "pgssub", "hdmv_pgs_subtitle", "pgs", "sup", "dvdsub", "dvd_subtitle", "vobsub", "dvbsub", "dvb_subtitle", "xsub" };
 
@@ -67,6 +68,8 @@ public sealed class ItemProcessor : IDisposable
     private readonly IApplicationPaths _appPaths;
     private readonly ILogger<ItemProcessor> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Throttle _throttle;
+    private readonly Translation.SubtitleTranslator _translator;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ItemProcessor"/> class.
@@ -81,6 +84,8 @@ public sealed class ItemProcessor : IDisposable
     /// <param name="state">State.</param>
     /// <param name="appPaths">App paths.</param>
     /// <param name="logger">Logger.</param>
+    /// <param name="throttle">Throttle (pause while someone is watching).</param>
+    /// <param name="translator">Translator for existing subtitles.</param>
     public ItemProcessor(
         LanguageResolver languages,
         FfmpegRunner ffmpeg,
@@ -91,7 +96,9 @@ public sealed class ItemProcessor : IDisposable
         WhisperService whisper,
         DownloadStateStore state,
         IApplicationPaths appPaths,
-        ILogger<ItemProcessor> logger)
+        ILogger<ItemProcessor> logger,
+        Throttle throttle,
+        Translation.SubtitleTranslator translator)
     {
         _languages = languages;
         _ffmpeg = ffmpeg;
@@ -103,6 +110,8 @@ public sealed class ItemProcessor : IDisposable
         _state = state;
         _appPaths = appPaths;
         _logger = logger;
+        _throttle = throttle;
+        _translator = translator;
     }
 
     /// <summary>
@@ -135,6 +144,7 @@ public sealed class ItemProcessor : IDisposable
             return 0;
         }
 
+        await _throttle.WaitForPlaybackAsync(cancellationToken).ConfigureAwait(false);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -143,11 +153,21 @@ public sealed class ItemProcessor : IDisposable
             if (steps.HasFlag(ProcessSteps.Ocr))
             {
                 written += await OcrAsync(video, languages, config, cancellationToken).ConfigureAwait(false);
+                if (config.ConvertAssToSrt || config.DeriveForcedSubtitles)
+                {
+                    written += await AssAsync(video, languages, config, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             if (steps.HasFlag(ProcessSteps.Download))
             {
                 written += await DownloadAsync(video, languages, config, force, cancellationToken).ConfigureAwait(false);
+
+                // No human-made subtitle found: translate an existing one of another language before Whisper.
+                if (config.TranslateExistingSubtitles && config.TranslationEnabled)
+                {
+                    written += await TranslateMissingAsync(video, languages, force, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             // Automatic Whisper only where wanted: tag "whisper:auto" on the film/series, or the global switch.
@@ -175,8 +195,10 @@ public sealed class ItemProcessor : IDisposable
     /// <returns>Outcome.</returns>
     /// <param name="replaceDownload">Remove SubtitleForge's own downloaded subtitle for this language afterwards and never
     /// download it again.</param>
-    public async Task<WhisperOutcome> WhisperAsync(Video video, string language, int? audioIndex, bool replaceDownload, CancellationToken cancellationToken)
+    /// <param name="progress">Progress 0..1.</param>
+    public async Task<WhisperOutcome> WhisperAsync(Video video, string language, int? audioIndex, bool replaceDownload, CancellationToken cancellationToken, IProgress<double>? progress = null)
     {
+        await _throttle.WaitForPlaybackAsync(cancellationToken).ConfigureAwait(false);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -192,7 +214,7 @@ public sealed class ItemProcessor : IDisposable
                 audio = tracks[position];
             }
 
-            var outcome = await _whisper.GenerateAsync(video, language, audio, null, cancellationToken).ConfigureAwait(false);
+            var outcome = await _whisper.GenerateAsync(video, language, audio, progress, cancellationToken).ConfigureAwait(false);
             _state.Set(video.Id, "whisper:" + language, outcome.Success ? "whisper" : "whisper-failed", outcome.Message);
             if (outcome.Success && replaceDownload)
             {
@@ -252,7 +274,10 @@ public sealed class ItemProcessor : IDisposable
             // Forced either by container flag, or (checked after OCR) by the PGS forced flags. A stream without the
             // forced flag may have been saved as forced earlier – but only if no other stream of that language is a
             // flagged forced stream (whose file would otherwise be mistaken for this one).
-            var ownStemExists = SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag));
+            var ownStemExists = SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, s.IsForced, tag))
+                || (sameKind.Count > 1 && !s.IsForced
+                    && SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, true, OcrTask.FileTag))
+                    && SubtitleFileWriter.Exists(video, SubtitleFileWriter.BuildStem(video, lang, false, OcrTask.FileTag)));
             var otherForcedStream = !s.IsForced && streams.Any(o => o != s && o.Type == MediaStreamType.Subtitle && !o.IsExternal
                 && o.IsForced && Lang.Same(o.Language, s.Language));
             var savedAsForcedEarlier = !s.IsForced && !otherForcedStream
@@ -271,7 +296,7 @@ public sealed class ItemProcessor : IDisposable
         var tempDir = Path.Combine(_appPaths.TempDirectory, "subtitleforge");
         Directory.CreateDirectory(tempDir);
         using var recognizer = new PaddleRecognizer(config.OcrThreads);
-        var written = 0;
+        var results = new List<(MediaStream Stream, string Stem, bool Forced, OcrResult Result, long Ms)>();
         foreach (var job in jobs)
         {
             var sup = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".sup");
@@ -291,21 +316,7 @@ public sealed class ItemProcessor : IDisposable
                     continue;
                 }
 
-                var stem = job.Stem;
-                if (!job.Forced && result.AllForced)
-                {
-                    stem = SubtitleFileWriter.BuildStem(video, string.IsNullOrWhiteSpace(job.Stream.Language) ? "und" : job.Stream.Language, true, Path.GetExtension(job.Stem).TrimStart('.'));
-                }
-
-                var path = await _writer.SaveAsync(video, stem, Srt.Write(result.Cues), cancellationToken).ConfigureAwait(false);
-                written++;
-                _logger.LogInformation(
-                    "SubtitleForge OCR: {Path} – {Cues} cues, mean confidence {Conf:P1}, {Low} low-confidence lines, {Ms} ms",
-                    path,
-                    result.Cues.Count,
-                    result.MeanConfidence,
-                    result.LowConfidenceLines,
-                    sw.ElapsedMilliseconds);
+                results.Add((job.Stream, job.Stem, job.Forced || result.AllForced, result, sw.ElapsedMilliseconds));
             }
             catch (OperationCanceledException)
             {
@@ -320,6 +331,116 @@ public sealed class ItemProcessor : IDisposable
                 try
                 {
                     File.Delete(sup);
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
+
+        // Unflagged forced tracks: of several tracks in one language, one with only a small fraction of the cues
+        // contains just signs/songs (e.g. Attack on Titan: 38 vs. 323 cues).
+        var forcedByCount = new HashSet<MediaStream>(ForcedDetector.SmallTracks(
+            results.Where(r => !r.Forced).Select(r => (r.Stream, Lang.ToTwoLetter(r.Stream.Language) ?? "und", r.Result.Cues.Count))));
+
+        var written = 0;
+        foreach (var r in results)
+        {
+            var forced = r.Forced || forcedByCount.Contains(r.Stream);
+            var stem = r.Stem;
+            if (forced && !r.Forced || forced && !stem.Contains(".forced.", StringComparison.Ordinal))
+            {
+                stem = SubtitleFileWriter.BuildStem(video, string.IsNullOrWhiteSpace(r.Stream.Language) ? "und" : r.Stream.Language, true, OcrTask.FileTag);
+            }
+            else if (!forced && forcedByCount.Count > 0 && results.Count(x => !x.Forced && !forcedByCount.Contains(x.Stream) && Lang.Same(x.Stream.Language, r.Stream.Language)) == 1)
+            {
+                // The remaining full track of that language no longer needs a number.
+                stem = SubtitleFileWriter.BuildStem(video, string.IsNullOrWhiteSpace(r.Stream.Language) ? "und" : r.Stream.Language, false, OcrTask.FileTag);
+            }
+
+            var path = await _writer.SaveAsync(video, stem, Srt.Write(r.Result.Cues), cancellationToken).ConfigureAwait(false);
+            written++;
+            _logger.LogInformation(
+                "SubtitleForge OCR: {Path} – {Cues} cues, mean confidence {Conf:P1}, {Low} low-confidence lines, {Ms} ms",
+                path,
+                r.Result.Cues.Count,
+                r.Result.MeanConfidence,
+                r.Result.LowConfidenceLines,
+                r.Ms);
+        }
+
+        return written;
+    }
+
+    /// <summary>File name tag for subtitles converted from ASS/SSA.</summary>
+    public const string AssTag = "Text";
+
+    private async Task<int> AssAsync(Video video, List<string> languages, PluginConfiguration config, CancellationToken cancellationToken)
+    {
+        var streams = video.GetMediaStreams();
+        var written = 0;
+        foreach (var s in streams.Where(s => s.Type == MediaStreamType.Subtitle && !s.IsExternal && AssCodecs.Contains(s.Codec ?? string.Empty)))
+        {
+            var two = Lang.ToTwoLetter(s.Language);
+            if (two is null || !languages.Contains(two))
+            {
+                continue;
+            }
+
+            var lang = s.Language!;
+            var fullStem = SubtitleFileWriter.BuildStem(video, lang, s.IsForced, AssTag);
+            var forcedStem = SubtitleFileWriter.BuildStem(video, lang, true, AssTag);
+            var wantFull = config.ConvertAssToSrt && !SubtitleFileWriter.Exists(video, fullStem);
+
+            // A forced track is only derived when none exists in that language (embedded, external or from OCR).
+            var wantForced = config.DeriveForcedSubtitles && !s.IsForced && !SubtitleFileWriter.Exists(video, forcedStem)
+                && !streams.Any(o => o.Type == MediaStreamType.Subtitle && o.IsForced && Lang.Same(o.Language, lang));
+            if (!wantFull && !wantForced)
+            {
+                continue;
+            }
+
+            var tempDir = Path.Combine(_appPaths.TempDirectory, "subtitleforge");
+            Directory.CreateDirectory(tempDir);
+            var tmp = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".ass");
+            try
+            {
+                await _ffmpeg.ExtractStreamAsync(video.Path, StreamMap.Specifier(streams, s), "ass", tmp, cancellationToken).ConfigureAwait(false);
+                var events = AssConverter.Parse(await File.ReadAllTextAsync(tmp, cancellationToken).ConfigureAwait(false));
+                if (wantFull)
+                {
+                    var cues = AssConverter.Build(events, AssEventKind.Dialogue, AssEventKind.Song);
+                    if (cues.Count >= 3)
+                    {
+                        await _writer.SaveAsync(video, fullStem, Srt.Write(cues), cancellationToken).ConfigureAwait(false);
+                        written++;
+                    }
+                }
+
+                if (wantForced)
+                {
+                    var cues = AssConverter.Build(events, AssEventKind.Sign, AssEventKind.Song);
+                    var dialogue = events.Count(e => e.Kind == AssEventKind.Dialogue);
+                    if (cues.Count >= 3 && dialogue > cues.Count)
+                    {
+                        await _writer.SaveAsync(video, forcedStem, Srt.Write(cues), cancellationToken).ConfigureAwait(false);
+                        written++;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SubtitleForge: ASS conversion failed for {Path} stream {Index}", video.Path, s.Index);
+            }
+            finally
+            {
+                try
+                {
+                    File.Delete(tmp);
                 }
                 catch (IOException)
                 {
@@ -362,7 +483,8 @@ public sealed class ItemProcessor : IDisposable
         }
 
         var missing = MissingLanguages(video, languages, config, force, string.Empty);
-        if (missing.Count == 0)
+        var forcedWanted = ForcedWanted(video, languages, config, force);
+        if (missing.Count == 0 && forcedWanted.Count == 0)
         {
             return 0;
         }
@@ -379,12 +501,17 @@ public sealed class ItemProcessor : IDisposable
 
         try
         {
-            var query = SubtitleSearchService.BuildQuery(video, missing);
+            var query = SubtitleSearchService.BuildQuery(video, missing.Union(forcedWanted).ToList());
             var ranked = await _search.SearchAsync(query, cancellationToken).ConfigureAwait(false);
             var saved = 0;
             foreach (var lang in missing)
             {
                 saved += await DownloadLanguageAsync(video, query, ranked, lang, config, cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var lang in forcedWanted)
+            {
+                saved += await DownloadForcedAsync(video, query, ranked, lang, cancellationToken).ConfigureAwait(false);
             }
 
             // Be gentle with the APIs (OpenSubtitles: max 5 requests/second).
@@ -405,6 +532,54 @@ public sealed class ItemProcessor : IDisposable
 
             return 0;
         }
+    }
+
+    /// <summary>
+    /// Languages for which a forced subtitle (signs/foreign parts) should be downloaded: the video has an audio track
+    /// in that language (dub), but no forced subtitle in it.
+    /// </summary>
+    private List<string> ForcedWanted(Video video, List<string> languages, PluginConfiguration config, bool force)
+    {
+        if (!config.DeriveForcedSubtitles)
+        {
+            return new List<string>();
+        }
+
+        var streams = video.GetMediaStreams();
+        return languages.Where(l =>
+                streams.Any(s => s.Type == MediaStreamType.Audio && Lang.Same(s.Language, l))
+                && !streams.Any(s => s.Type == MediaStreamType.Subtitle && s.IsForced && Lang.Same(s.Language, l))
+                && (force || _state.Get(video.Id, "forced:" + l) is not { } st || DateTime.UtcNow - st.LastTriedUtc > TimeSpan.FromDays(Math.Max(1, config.DownloadRetryDays))))
+            .ToList();
+    }
+
+    private async Task<int> DownloadForcedAsync(Video video, SubtitleQuery query, List<SubtitleCandidate> ranked, string lang, CancellationToken cancellationToken)
+    {
+        // Forced subtitles cover too little speech to be verified against the audio, so only exact matches
+        // (file hash or matching release) are taken.
+        var candidate = ranked.FirstOrDefault(c => c.Language == lang && !c.MachineTranslated
+            && (c.Forced || ForcedDetector.NameSaysForced(c.Releases))
+            && (c.HashMatch || c.IsSafeMatch)
+            && !_search.Quota.IsPaused(c.Source)
+            && !_state.IsBlocked(video.Id, lang, c.Source + "|" + c.Reference));
+        if (candidate is null)
+        {
+            _state.Set(video.Id, "forced:" + lang, "none-found", null);
+            return 0;
+        }
+
+        var (data, fileName) = await _search.GetSource(candidate.Source).DownloadAsync(candidate, cancellationToken).ConfigureAwait(false);
+        var cues = SubtitleContent.Parse(data, fileName, query.Season, query.Episode);
+        if (cues is null || cues.Count == 0)
+        {
+            _state.Set(video.Id, "forced:" + lang, "error", "Datei nicht lesbar");
+            return 0;
+        }
+
+        var stem = SubtitleFileWriter.BuildStem(video, Lang.ToThreeLetter(lang), true, candidate.Source);
+        await _writer.SaveAsync(video, stem, Srt.Write(cues), cancellationToken).ConfigureAwait(false);
+        _state.Set(video.Id, "forced:" + lang, "saved", $"{candidate.Source}: {candidate.DisplayName}", candidate.Source + "|" + candidate.Reference);
+        return 1;
     }
 
     private async Task<int> DownloadLanguageAsync(Video video, SubtitleQuery query, List<SubtitleCandidate> ranked, string lang, PluginConfiguration config, CancellationToken cancellationToken)
@@ -541,6 +716,71 @@ public sealed class ItemProcessor : IDisposable
         return 0;
     }
 
+    /// <summary>
+    /// Manually translates an existing subtitle into a language.
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <param name="language">Target language.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <param name="progress">Progress 0..1.</param>
+    /// <returns>Outcome.</returns>
+    public async Task<WhisperOutcome> TranslateAsync(Video video, string language, CancellationToken cancellationToken, IProgress<double>? progress = null)
+    {
+        await _throttle.WaitForPlaybackAsync(cancellationToken).ConfigureAwait(false);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var outcome = await _translator.TranslateAsync(video, language, progress, cancellationToken).ConfigureAwait(false);
+            _state.Set(video.Id, "translate:" + language, outcome.Success ? "saved" : "failed", outcome.Message);
+            return outcome;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<int> TranslateMissingAsync(Video video, List<string> languages, bool force, CancellationToken cancellationToken)
+    {
+        var written = 0;
+        foreach (var lang in languages)
+        {
+            if (HasLanguage(video.GetMediaStreams(), lang) || _state.Get(video.Id, lang)?.Outcome == "saved"
+                || _state.Get(video.Id, lang)?.Outcome == WaitingForQuota)
+            {
+                continue; // present, just downloaded, or a source was not asked yet (quota) – try downloading again first
+            }
+
+            if (!force && _state.Get(video.Id, "translate:" + lang) is not null)
+            {
+                continue;
+            }
+
+            if (Translation.SubtitleTranslator.PickSource(video.GetMediaStreams(), lang) is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var outcome = await _translator.TranslateAsync(video, lang, null, cancellationToken).ConfigureAwait(false);
+                _state.Set(video.Id, "translate:" + lang, outcome.Success ? "saved" : "failed", outcome.Message);
+                written += outcome.Success ? 1 : 0;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SubtitleForge: translating a subtitle into {Lang} failed for {Path}", lang, video.Path);
+                _state.Set(video.Id, "translate:" + lang, "failed", ex.Message);
+            }
+        }
+
+        return written;
+    }
+
     private async Task<int> WhisperFallbackAsync(Video video, List<string> languages, bool force, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance?.Configuration ?? new PluginConfiguration();
@@ -548,7 +788,8 @@ public sealed class ItemProcessor : IDisposable
         foreach (var lang in languages)
         {
             // Streams are refreshed asynchronously after saving, so also check what this run just downloaded.
-            if (HasLanguage(video.GetMediaStreams(), lang) || _state.Get(video.Id, lang)?.Outcome == "saved")
+            if (HasLanguage(video.GetMediaStreams(), lang) || _state.Get(video.Id, lang)?.Outcome == "saved"
+                || _state.Get(video.Id, "translate:" + lang)?.Outcome == "saved")
             {
                 continue;
             }

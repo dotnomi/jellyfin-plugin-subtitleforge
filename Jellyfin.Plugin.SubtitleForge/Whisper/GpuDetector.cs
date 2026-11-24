@@ -47,6 +47,17 @@ public static class GpuDetector
     }
 
     /// <summary>
+    /// Whether the proprietary NVIDIA Vulkan driver is installed (its ICD file exists).
+    /// </summary>
+    /// <param name="icdDirs">ICD folders to check (default: the standard locations).</param>
+    /// <returns>True if found.</returns>
+    public static bool HasNvidiaVulkanDriver(params string[] icdDirs)
+    {
+        var dirs = icdDirs.Length > 0 ? icdDirs : new[] { "/usr/share/vulkan/icd.d", "/etc/vulkan/icd.d", "/usr/local/share/vulkan/icd.d" };
+        return dirs.Any(d => Directory.Exists(d) && Directory.EnumerateFiles(d, "nvidia*.json").Any());
+    }
+
+    /// <summary>
     /// Whether the Vulkan loader library is available.
     /// </summary>
     /// <returns>True if libvulkan.so.1 can be loaded.</returns>
@@ -81,6 +92,19 @@ public static class GpuDetector
         if (!HasVulkanLoader())
         {
             return (false, $"GPU gefunden ({string.Join(", ", nodes.Select(n => n.Vendor))}), aber kein Vulkan installiert (Paket libvulkan1 + mesa-vulkan-drivers)");
+        }
+
+        // NVIDIA only with the proprietary driver: Mesa's open-source NVIDIA Vulkan driver (NVK/nouveau) hangs on
+        // whisper.cpp's compute shaders.
+        if (!HasNvidiaVulkanDriver())
+        {
+            var withoutNvidia = nodes.Where(n => n.Vendor != "NVIDIA").ToList();
+            if (withoutNvidia.Count == 0)
+            {
+                return (false, "NVIDIA-GPU gefunden, aber ohne den offiziellen NVIDIA-Treiber (Vulkan) – Whisper nutzt die CPU");
+            }
+
+            nodes = withoutNvidia;
         }
 
         return (true, "GPU: " + string.Join(", ", nodes.Select(n => $"{n.Vendor} ({n.Node})")));

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Plugin.SubtitleForge.Common;
 using Jellyfin.Plugin.SubtitleForge.Providers;
 using MediaBrowser.Controller.Entities;
@@ -25,6 +27,8 @@ public class SubtitleForgeController : ControllerBase
     private readonly LanguageResolver _languages;
     private readonly DownloadStateStore _state;
     private readonly WorkQueue _queue;
+    private readonly SubtitleSearchService _search;
+    private readonly SubtitleFileWriter _writer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SubtitleForgeController"/> class.
@@ -33,8 +37,12 @@ public class SubtitleForgeController : ControllerBase
     /// <param name="languages">Language resolver.</param>
     /// <param name="state">State store.</param>
     /// <param name="queue">Work queue.</param>
-    public SubtitleForgeController(ILibraryManager libraryManager, LanguageResolver languages, DownloadStateStore state, WorkQueue queue)
+    /// <param name="search">Search service.</param>
+    /// <param name="writer">Subtitle writer.</param>
+    public SubtitleForgeController(ILibraryManager libraryManager, LanguageResolver languages, DownloadStateStore state, WorkQueue queue, SubtitleSearchService search, SubtitleFileWriter writer)
     {
+        _search = search;
+        _writer = writer;
         _libraryManager = libraryManager;
         _languages = languages;
         _state = state;
@@ -94,29 +102,44 @@ public class SubtitleForgeController : ControllerBase
     }
 
     /// <summary>
-    /// Searches/downloads again for an item, ignoring the retry delay.
+    /// Searches/downloads again, ignoring the retry delay. For a season, series or library: all episodes/movies in it.
     /// </summary>
-    /// <param name="id">Item id.</param>
-    /// <returns>Accepted.</returns>
+    /// <param name="id">Item id (video or folder).</param>
+    /// <returns>Number of queued jobs.</returns>
     [HttpPost("Items/{id}/Search")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    public ActionResult Search([FromRoute] Guid id)
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Search([FromRoute] Guid id)
     {
-        _queue.Enqueue(new WorkItem(id, WorkKind.Search, null, null, DateTime.UtcNow));
-        return Accepted();
+        if (_libraryManager.GetItemById(id) is not { } item)
+        {
+            return NotFound();
+        }
+
+        var videos = LibraryItems.VideosUnder(_libraryManager, item);
+        var due = DateTime.UtcNow;
+        foreach (var v in videos)
+        {
+            _queue.Enqueue(new WorkItem(v.Id, WorkKind.Search, null, null, due));
+            due = due.AddTicks(1); // keep episode order
+        }
+
+        return Accepted(new { queued = videos.Count });
     }
 
     /// <summary>
-    /// Generates a subtitle with Whisper.
+    /// Generates subtitles with Whisper. For a season, series or library: every episode/movie in it.
     /// </summary>
-    /// <param name="id">Item id.</param>
+    /// <param name="id">Item id (video or folder).</param>
     /// <param name="language">Target language (ISO 639-1).</param>
-    /// <param name="audioIndex">Position of the audio track (0 = first audio track), or empty for automatic choice.</param>
+    /// <param name="audioIndex">Position of the audio track (0 = first audio track); single videos only.</param>
+    /// <param name="audioLanguage">Audio language to use (per episode the first track in that language).</param>
     /// <param name="replace">Replace SubtitleForge's own downloaded subtitle of that language (and never download it again).</param>
-    /// <returns>Accepted.</returns>
+    /// <returns>Number of queued jobs.</returns>
     [HttpPost("Items/{id}/Whisper")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
-    public ActionResult Whisper([FromRoute] Guid id, [FromQuery] string language, [FromQuery] int? audioIndex, [FromQuery] bool replace = false)
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Whisper([FromRoute] Guid id, [FromQuery] string language, [FromQuery] int? audioIndex, [FromQuery] string? audioLanguage, [FromQuery] bool replace = false)
     {
         var lang = Lang.ToTwoLetter(language);
         if (lang is null)
@@ -124,8 +147,347 @@ public class SubtitleForgeController : ControllerBase
             return BadRequest("unknown language");
         }
 
-        _queue.Enqueue(new WorkItem(id, WorkKind.Whisper, lang, audioIndex, DateTime.UtcNow, replace));
-        return Accepted();
+        if (_libraryManager.GetItemById(id) is not { } item)
+        {
+            return NotFound();
+        }
+
+        var videos = LibraryItems.VideosUnder(_libraryManager, item);
+        var due = DateTime.UtcNow;
+        var queued = 0;
+        foreach (var v in videos)
+        {
+            var index = videos.Count == 1 ? audioIndex : null;
+            if (!string.IsNullOrEmpty(audioLanguage))
+            {
+                var tracks = v.GetMediaStreams().Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal).OrderBy(s => s.Index).ToList();
+                var pos = tracks.FindIndex(s => Lang.Same(s.Language, audioLanguage));
+                if (pos < 0)
+                {
+                    continue; // episode has no track in that language
+                }
+
+                index = pos;
+            }
+
+            _queue.Enqueue(new WorkItem(v.Id, WorkKind.Whisper, lang, index, due, replace));
+            due = due.AddTicks(1);
+            queued++;
+        }
+
+        return Accepted(new { queued });
+    }
+
+    /// <summary>
+    /// Translates an existing subtitle of another language offline. For a season, series or library: every video.
+    /// </summary>
+    /// <param name="id">Item id (video or folder).</param>
+    /// <param name="language">Target language (ISO 639-1).</param>
+    /// <returns>Number of queued jobs.</returns>
+    [HttpPost("Items/{id}/Translate")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Translate([FromRoute] Guid id, [FromQuery] string language)
+    {
+        var lang = Lang.ToTwoLetter(language);
+        if (lang is null)
+        {
+            return BadRequest("unknown language");
+        }
+
+        if (_libraryManager.GetItemById(id) is not { } item)
+        {
+            return NotFound();
+        }
+
+        var due = DateTime.UtcNow;
+        var queued = 0;
+        foreach (var v in LibraryItems.VideosUnder(_libraryManager, item))
+        {
+            if (Translation.SubtitleTranslator.PickSource(v.GetMediaStreams(), lang) is null)
+            {
+                continue;
+            }
+
+            _queue.Enqueue(new WorkItem(v.Id, WorkKind.Translate, lang, null, due));
+            due = due.AddTicks(1);
+            queued++;
+        }
+
+        return Accepted(new { queued });
+    }
+
+    /// <summary>
+    /// Information for the action dialog on an item's detail page.
+    /// </summary>
+    /// <param name="id">Item id.</param>
+    /// <returns>Kind, number of videos, audio languages, wanted languages and per-language status.</returns>
+    [HttpGet("Items/{id}/Info")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Info([FromRoute] Guid id)
+    {
+        if (_libraryManager.GetItemById(id) is not { } item)
+        {
+            return NotFound();
+        }
+
+        var videos = LibraryItems.VideosUnder(_libraryManager, item);
+        var audio = videos.Take(50)
+            .SelectMany(v => v.GetMediaStreams().Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal))
+            .Select(s => Lang.ToTwoLetter(s.Language ?? string.Empty))
+            .Where(l => l is not null)
+            .Distinct()
+            .ToList();
+        var first = videos.FirstOrDefault();
+        return Ok(new
+        {
+            kind = item is Video ? "video" : "folder",
+            name = Title(item),
+            videos = videos.Count,
+            audioLanguages = audio,
+            audioTracks = item is Video single
+                ? single.GetMediaStreams().Where(s => s.Type == MediaStreamType.Audio && !s.IsExternal).OrderBy(s => s.Index)
+                    .Select((s, i) => new ReportAudio { Index = i, Language = s.Language, Title = s.DisplayTitle }).ToList()
+                : new List<ReportAudio>(),
+            languages = first is null ? new List<string>() : _languages.Resolve(first, out _).ToList(),
+        });
+    }
+
+    /// <summary>
+    /// External subtitle files of a video with a short preview (first cues), and who made them.
+    /// </summary>
+    /// <param name="id">Video id.</param>
+    /// <returns>Files.</returns>
+    [HttpGet("Items/{id}/Subtitles")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Subtitles([FromRoute] Guid id)
+    {
+        if (_libraryManager.GetItemById(id) is not Video video)
+        {
+            return NotFound();
+        }
+
+        var files = new List<object>();
+        foreach (var s in video.GetMediaStreams().Where(s => s.Type == MediaStreamType.Subtitle && s.IsExternal && !string.IsNullOrEmpty(s.Path)))
+        {
+            var info = OwnFile(video, s.Path!);
+            List<SubtitleCue> cues;
+            try
+            {
+                cues = s.Path!.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(s.Path)
+                    ? Srt.Parse(System.IO.File.ReadAllText(s.Path))
+                    : new List<SubtitleCue>();
+            }
+            catch (System.IO.IOException)
+            {
+                cues = new List<SubtitleCue>();
+            }
+
+            // Preview from the middle of the file: the first cues are often credits or signs.
+            var start = Math.Max(0, (cues.Count / 3) - 3);
+            files.Add(new
+            {
+                file = System.IO.Path.GetFileName(s.Path),
+                language = s.Language,
+                title = s.Title,
+                forced = s.IsForced,
+                origin = info.Origin,
+                canReject = info.Origin is "download" or "whisper" or "translation",
+                count = cues.Count,
+                preview = cues.Skip(start).Take(6).Select(c => new { time = Srt.FormatTime(c.StartMs)[..8], text = c.Text.Replace("\n", " / ", StringComparison.Ordinal) }),
+            });
+        }
+
+        return Ok(files);
+    }
+
+    /// <summary>
+    /// "Doesn't fit": removes a subtitle SubtitleForge made. A download is also blocked (never chosen again for this
+    /// item) and a new search is queued; a Whisper file is just removed.
+    /// </summary>
+    /// <param name="id">Video id.</param>
+    /// <param name="file">File name (as returned by <see cref="Subtitles"/>).</param>
+    /// <returns>Result.</returns>
+    [HttpPost("Items/{id}/Subtitles/Reject")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<object> Reject([FromRoute] Guid id, [FromQuery] string file)
+    {
+        if (_libraryManager.GetItemById(id) is not Video video)
+        {
+            return NotFound();
+        }
+
+        var path = video.GetMediaStreams()
+            .Where(s => s.Type == MediaStreamType.Subtitle && s.IsExternal && !string.IsNullOrEmpty(s.Path))
+            .Select(s => s.Path!)
+            .FirstOrDefault(p => string.Equals(System.IO.Path.GetFileName(p), file, StringComparison.Ordinal));
+        if (path is null)
+        {
+            return NotFound();
+        }
+
+        var info = OwnFile(video, path);
+        if (info.Origin is not ("download" or "whisper" or "translation") || info.Language is null)
+        {
+            return BadRequest("Nur Downloads und Whisper-Untertitel des Plugins können verworfen werden.");
+        }
+
+        var lang2 = Lang.ToTwoLetter(info.Language) ?? info.Language;
+        var blocked = false;
+        if (info.Origin == "download" && _state.Get(video.Id, lang2)?.Reference is { } reference
+            && reference.StartsWith(info.Tag + "|", StringComparison.OrdinalIgnoreCase))
+        {
+            _state.Block(video.Id, lang2, reference);
+            blocked = true;
+        }
+
+        var removed = _writer.DeleteOwn(video, info.Language, tag => string.Equals(tag, info.Tag, StringComparison.Ordinal), null);
+        if (info.Origin == "translation")
+        {
+            _state.Set(video.Id, "translate:" + lang2, "rejected", "vom Benutzer verworfen");
+        }
+        if (info.Origin == "download")
+        {
+            _state.Set(video.Id, lang2, "rejected", "vom Benutzer verworfen – suche neu");
+            _queue.Enqueue(new WorkItem(video.Id, WorkKind.Search, null, null, DateTime.UtcNow));
+        }
+
+        return Ok(new { removed, blocked, searching = info.Origin == "download" });
+    }
+
+    /// <summary>
+    /// The last sync report (scheduled task "Sync-Bericht erstellen").
+    /// </summary>
+    /// <returns>Rows, problems first.</returns>
+    [HttpGet("SyncReport")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<object> SyncReport()
+    {
+        var order = new Dictionary<string, int>(StringComparer.Ordinal) { ["shifted"] = 0, ["unsure"] = 1, ["error"] = 2, ["no-audio"] = 3, ["empty"] = 4, ["ok"] = 5 };
+        var rows = Jellyfin.Plugin.SubtitleForge.Sync.SyncReportTask.Load();
+        return Ok(new
+        {
+            created = Jellyfin.Plugin.SubtitleForge.Sync.SyncReportTask.ReportPath is { } p && System.IO.File.Exists(p) ? System.IO.File.GetLastWriteTime(p) : (DateTime?)null,
+            rows = rows.OrderBy(r => order.GetValueOrDefault(r.Outcome, 9)).ThenBy(r => r.Name, StringComparer.CurrentCulture),
+        });
+    }
+
+    /// <summary>
+    /// Corrects the timing of one subtitle file. Files SubtitleForge made are corrected in place; for other files a
+    /// corrected copy ("…Sync.srt") is written next to it and the original stays untouched.
+    /// </summary>
+    /// <param name="id">Video id.</param>
+    /// <param name="file">File name.</param>
+    /// <param name="sync">Sync service.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Result.</returns>
+    [HttpPost("Items/{id}/Subtitles/Fix")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<object>> Fix([FromRoute] Guid id, [FromQuery] string file, [FromServices] Jellyfin.Plugin.SubtitleForge.Sync.SyncService sync, CancellationToken cancellationToken)
+    {
+        if (_libraryManager.GetItemById(id) is not Video video)
+        {
+            return NotFound();
+        }
+
+        var path = video.GetMediaStreams()
+            .Where(s => s.Type == MediaStreamType.Subtitle && s.IsExternal && !string.IsNullOrEmpty(s.Path))
+            .Select(s => s.Path!)
+            .FirstOrDefault(p => string.Equals(System.IO.Path.GetFileName(p), file, StringComparison.Ordinal));
+        if (path is null || !path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+
+        var cues = SubtitleContent.Parse(await System.IO.File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false), file, null, null);
+        if (cues is null || cues.Count < 3)
+        {
+            return BadRequest("Datei enthält keine Untertitel");
+        }
+
+        var alignment = await sync.AlignAsync(video, cues, false, cancellationToken).ConfigureAwait(false);
+        if (alignment is null || !alignment.IsConfident)
+        {
+            return Ok(new { ok = false, message = "Timing nicht sicher bestimmbar – evtl. gehört der Untertitel zu einer anderen Fassung" });
+        }
+
+        var info = OwnFile(video, path);
+        string written;
+        if (info.Origin is "download" or "plugin")
+        {
+            var tmp = path + ".tmp";
+            await System.IO.File.WriteAllTextAsync(tmp, Srt.Write(alignment.Cues), new System.Text.UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
+            System.IO.File.Move(tmp, path, true);
+            written = path;
+        }
+        else
+        {
+            var stem = System.IO.Path.GetFileNameWithoutExtension(path);
+            var prefix = System.IO.Path.GetFileNameWithoutExtension(video.Path) + ".";
+            var rest = stem.StartsWith(prefix, StringComparison.Ordinal) ? stem[prefix.Length..] : string.Empty;
+            var lang = rest.Split('.')[0];
+            lang = Lang.ToTwoLetter(lang) is null ? "und" : lang;
+            written = await _writer.SaveAsync(video, SubtitleFileWriter.BuildStem(video, lang, false, "Sync"), Srt.Write(alignment.Cues), cancellationToken).ConfigureAwait(false);
+        }
+
+        var rows = Jellyfin.Plugin.SubtitleForge.Sync.SyncReportTask.Load();
+        foreach (var r in rows.Where(r => r.ItemId == id && r.File == file))
+        {
+            r.Fixed = true;
+        }
+
+        Jellyfin.Plugin.SubtitleForge.Sync.SyncReportTask.Save(rows);
+        return Ok(new { ok = true, message = $"korrigiert ({alignment}) → {System.IO.Path.GetFileName(written)}" });
+    }
+
+    /// <summary>
+    /// Coverage per library and wanted language.
+    /// </summary>
+    /// <returns>Statistics.</returns>
+    [HttpGet("Stats")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<object> Stats()
+    {
+        var libs = new Dictionary<string, (int Videos, Dictionary<string, (int Wanted, int Have, int Own)> Langs)>(StringComparer.Ordinal);
+        foreach (var video in LibraryItems.Videos(_libraryManager))
+        {
+            var lib = _libraryManager.GetCollectionFolders(video).FirstOrDefault()?.Name ?? "?";
+            if (!libs.TryGetValue(lib, out var entry))
+            {
+                entry = (0, new Dictionary<string, (int, int, int)>(StringComparer.Ordinal));
+            }
+
+            entry.Videos++;
+            var streams = video.GetMediaStreams().Where(s => s.Type == MediaStreamType.Subtitle && !s.IsForced).ToList();
+            foreach (var lang in _languages.Resolve(video, out _))
+            {
+                var matching = streams.Where(s => Lang.Same(s.Language, lang)).ToList();
+                var own = matching.Any(s => s.IsExternal && !string.IsNullOrEmpty(s.Path) && OwnFile(video, s.Path!).Origin != "foreign");
+                entry.Langs.TryGetValue(lang, out var c);
+                entry.Langs[lang] = (c.Wanted + 1, c.Have + (matching.Count > 0 ? 1 : 0), c.Own + (own ? 1 : 0));
+            }
+
+            libs[lib] = entry;
+        }
+
+        return Ok(libs.OrderBy(l => l.Key, StringComparer.CurrentCulture).Select(l => new
+        {
+            library = l.Key,
+            videos = l.Value.Videos,
+            languages = l.Value.Langs.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => new
+            {
+                language = x.Key,
+                wanted = x.Value.Wanted,
+                have = x.Value.Have,
+                byPlugin = x.Value.Own,
+                percent = x.Value.Wanted == 0 ? 0 : (int)Math.Round(100.0 * x.Value.Have / x.Value.Wanted),
+            }),
+        }));
     }
 
     /// <summary>
@@ -138,24 +500,159 @@ public class SubtitleForgeController : ControllerBase
     {
         var check = Jellyfin.Plugin.SubtitleForge.Whisper.GpuDetector.Check();
         var engine = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.GpuBroken;
-        return Ok(new { gpu = engine ? Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.GpuStatus : check.Description, gpuUsable = check.Usable && !engine, runtime = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.LoadedRuntime });
+        return Ok(new
+        {
+            gpu = engine ? Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.GpuStatus : check.Description,
+            gpuUsable = check.Usable && !engine,
+            runtime = Jellyfin.Plugin.SubtitleForge.Whisper.WhisperEngine.LoadedRuntime,
+            selfTest = Jellyfin.Plugin.SubtitleForge.Whisper.GpuSelfTest.LastResult,
+        });
     }
 
     /// <summary>
-    /// Queue status.
+    /// Runs the GPU self-test now (downloads the configured Whisper model if needed).
     /// </summary>
+    /// <param name="selfTest">Self-test service.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Result text.</returns>
+    [HttpPost("Hardware/Test")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> HardwareTest([FromServices] Jellyfin.Plugin.SubtitleForge.Whisper.GpuSelfTest selfTest, CancellationToken cancellationToken)
+    {
+        var result = await selfTest.RunAsync(true, cancellationToken).ConfigureAwait(false);
+        return Ok(new { result });
+    }
+
+    /// <summary>
+    /// Sends a test notification (activity log / webhook).
+    /// </summary>
+    /// <param name="notifier">Notifier.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>No content.</returns>
+    [HttpPost("Notify/Test")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<ActionResult> NotifyTest([FromServices] Notifier notifier, CancellationToken cancellationToken)
+    {
+        await notifier.TestAsync(cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Queue status with progress and remaining time, plus running SubtitleForge scheduled tasks.
+    /// </summary>
+    /// <param name="taskManager">Task manager.</param>
     /// <returns>Status.</returns>
     [HttpGet("Queue")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<object> Queue()
+    public ActionResult<object> Queue([FromServices] MediaBrowser.Model.Tasks.ITaskManager taskManager)
     {
         string Name(Guid id) => _libraryManager.GetItemById(id) is { } item ? Title(item) : id.ToString("N");
+        var pending = _queue.Pending();
+        var currentRemaining = _queue.CurrentRemainingSeconds();
+        var pendingRows = pending.Select(p => new { name = Name(p.ItemId), kind = p.Kind.ToString(), language = p.Language, due = p.DueUtc, etaSeconds = (int)_queue.Estimate(p) }).ToList();
+
+        var tasks = taskManager.ScheduledTasks
+            .Where(t => t.Category == "SubtitleForge" && t.State == MediaBrowser.Model.Tasks.TaskState.Running)
+            .Select(t =>
+            {
+                // ScheduledTaskWorker exposes no start time of the running execution; TaskEta derives it from our clock.
+                var progress = t.CurrentProgress is { } cp ? cp / 100.0 : (double?)null;
+                return new { name = t.Name, progress, etaSeconds = TaskEta(t.Id, progress) };
+            })
+            .ToList();
+
+        var total = (currentRemaining ?? 0) + pendingRows.Sum(p => p.etaSeconds) + tasks.Sum(t => t.etaSeconds ?? 0);
         return Ok(new
         {
-            current = _queue.Current is { } c ? new { name = Name(c.ItemId), kind = c.Kind.ToString(), language = c.Language } : null,
-            pending = _queue.Pending().Select(p => new { name = Name(p.ItemId), kind = p.Kind.ToString(), language = p.Language, due = p.DueUtc }),
+            current = _queue.Current is { } c
+                ? new
+                {
+                    name = Name(c.ItemId),
+                    kind = c.Kind.ToString(),
+                    language = c.Language,
+                    progress = _queue.CurrentProgress,
+                    elapsedSeconds = (int)(DateTime.UtcNow - _queue.CurrentStartedUtc).TotalSeconds,
+                    etaSeconds = currentRemaining is { } r ? (int)r : (int?)null,
+                    waiting = _queue.CurrentWaiting,
+                }
+                : null,
+            pending = pendingRows,
+            tasks,
+            totalEtaSeconds = (int)total,
             log = _queue.Log.Reverse().ToList(),
         });
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Start, double Progress)> TaskStarts = new();
+
+    /// <summary>
+    /// Remaining time of a running scheduled task, from its progress since we first saw it running.
+    /// </summary>
+    private static int? TaskEta(string id, double? progress)
+    {
+        if (progress is not { } p)
+        {
+            return null;
+        }
+
+        var now = DateTime.UtcNow;
+        var first = TaskStarts.GetOrAdd(id, _ => (now, p));
+        if (p < first.Progress)
+        {
+            TaskStarts[id] = first = (now, p); // a new run started
+        }
+
+        var done = p - first.Progress;
+        var elapsed = (now - first.Start).TotalSeconds;
+        return done < 0.01 || elapsed < 10 ? null : (int)(elapsed * (1 - p) / done);
+    }
+
+    private (string Origin, string? Language, string Tag) OwnFile(Video video, string path)
+    {
+        var prefix = System.IO.Path.GetFileNameWithoutExtension(video.Path) + ".";
+        var stem = System.IO.Path.GetFileNameWithoutExtension(path);
+        if (!stem.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return ("foreign", null, string.Empty);
+        }
+
+        var rest = stem[prefix.Length..];
+        var dot = rest.IndexOf('.', StringComparison.Ordinal);
+        if (dot < 0)
+        {
+            return ("foreign", rest, string.Empty);
+        }
+
+        var language = rest[..dot];
+        var tag = rest[(dot + 1)..];
+        var bare = tag.StartsWith("forced.", StringComparison.Ordinal) ? tag[7..] : tag;
+        string origin;
+        if (_search.Sources.Any(x => string.Equals(x.Name, bare, StringComparison.OrdinalIgnoreCase)))
+        {
+            origin = "download";
+        }
+        else if (Translation.SubtitleTranslator.IsTranslationTag(bare))
+        {
+            origin = "translation";
+        }
+        else if (Jellyfin.Plugin.SubtitleForge.Whisper.WhisperService.IsWhisperTag(bare))
+        {
+            origin = "whisper";
+        }
+        else if (bare.StartsWith(Jellyfin.Plugin.SubtitleForge.Ocr.OcrTask.FileTag, StringComparison.Ordinal))
+        {
+            origin = "ocr";
+        }
+        else if (bare is "Sync" or "Text" or "Forced")
+        {
+            origin = "plugin";
+        }
+        else
+        {
+            origin = "foreign";
+        }
+
+        return (origin, language, tag);
     }
 
     private static string Title(BaseItem item) => item is Episode e

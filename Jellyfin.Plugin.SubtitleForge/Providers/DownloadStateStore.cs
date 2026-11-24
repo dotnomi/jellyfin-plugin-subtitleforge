@@ -34,7 +34,10 @@ public class DownloadStateStore
     /// <param name="reference">Source + reference of a saved download (to block it later).</param>
     public void Set(Guid itemId, string language, string outcome, string? detail, string? reference = null)
     {
-        Load()[Key(itemId, language)] = new Entry { LastTriedUtc = DateTime.UtcNow, Outcome = outcome, Detail = detail, Reference = reference };
+        var entries = Load();
+        var key = Key(itemId, language);
+        DateTime? firstMissing = outcome == "saved" ? null : (entries.TryGetValue(key, out var old) ? old.FirstMissingUtc : null) ?? DateTime.UtcNow;
+        entries[key] = new Entry { LastTriedUtc = DateTime.UtcNow, Outcome = outcome, Detail = detail, Reference = reference, FirstMissingUtc = firstMissing };
         Save();
     }
 
@@ -134,5 +137,8 @@ public class DownloadStateStore
 
         /// <summary>Gets or sets "Source|Reference" of a saved download.</summary>
         public string? Reference { get; set; }
+
+        /// <summary>Gets or sets since when no subtitle could be found (null once one was saved).</summary>
+        public DateTime? FirstMissingUtc { get; set; }
     }
 }

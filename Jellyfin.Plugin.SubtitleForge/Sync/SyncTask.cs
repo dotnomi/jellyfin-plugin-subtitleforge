@@ -26,10 +26,12 @@ public class SyncTask : IScheduledTask
 {
     private const long MinCorrectionMs = 150;
 
-    private static readonly string[] OwnTags = { "SubDL", "OpenSubtitles" };
+    private static readonly string[] OwnTags = { "SubDL", "OpenSubtitles", "Jimaku" };
 
     private readonly ILibraryManager _libraryManager;
     private readonly SyncService _sync;
+    private readonly Throttle _throttle;
+    private readonly Notifier _notifier;
     private readonly DownloadStateStore _state;
     private readonly ILogger<SyncTask> _logger;
 
@@ -40,8 +42,12 @@ public class SyncTask : IScheduledTask
     /// <param name="sync">Sync service.</param>
     /// <param name="state">State store.</param>
     /// <param name="logger">Logger.</param>
-    public SyncTask(ILibraryManager libraryManager, SyncService sync, DownloadStateStore state, ILogger<SyncTask> logger)
+    /// <param name="throttle">Throttle.</param>
+    /// <param name="notifier">Notifier.</param>
+    public SyncTask(ILibraryManager libraryManager, SyncService sync, DownloadStateStore state, ILogger<SyncTask> logger, Throttle throttle, Notifier notifier)
     {
+        _throttle = throttle;
+        _notifier = notifier;
         _libraryManager = libraryManager;
         _sync = sync;
         _state = state;
@@ -110,6 +116,7 @@ public class SyncTask : IScheduledTask
             cancellationToken.ThrowIfCancellationRequested();
             progress.Report(100.0 * i / Math.Max(1, work.Count));
             var (video, path, own) = work[i];
+            await _throttle.WaitForPlaybackAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 var outcome = await CheckAsync(video, path, own, cancellationToken).ConfigureAwait(false);
@@ -132,6 +139,10 @@ public class SyncTask : IScheduledTask
         }
 
         _logger.LogInformation("SubtitleForge sync: {Fixed} corrected, {Ok} already in sync, {Unsure} not verifiable", fixedCount, okCount, unsure);
+        if (fixedCount + unsure > 0)
+        {
+            await _notifier.FlushAsync("Sync", FormattableString.Invariant($"{fixedCount} korrigiert, {okCount} passten schon, {unsure} nicht prüfbar"), cancellationToken).ConfigureAwait(false);
+        }
         progress.Report(100);
     }
 

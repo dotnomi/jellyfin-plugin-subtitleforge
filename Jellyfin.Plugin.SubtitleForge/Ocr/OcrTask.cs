@@ -23,6 +23,7 @@ public class OcrTask : IScheduledTask
 
     private readonly ILibraryManager _libraryManager;
     private readonly ItemProcessor _processor;
+    private readonly Notifier _notifier;
     private readonly ILogger<OcrTask> _logger;
 
     /// <summary>
@@ -31,8 +32,10 @@ public class OcrTask : IScheduledTask
     /// <param name="libraryManager">Library manager.</param>
     /// <param name="processor">Item processor.</param>
     /// <param name="logger">Logger.</param>
-    public OcrTask(ILibraryManager libraryManager, ItemProcessor processor, ILogger<OcrTask> logger)
+    /// <param name="notifier">Notifier.</param>
+    public OcrTask(ILibraryManager libraryManager, ItemProcessor processor, ILogger<OcrTask> logger, Notifier notifier)
     {
+        _notifier = notifier;
         _libraryManager = libraryManager;
         _processor = processor;
         _logger = logger;
@@ -72,5 +75,6 @@ public class OcrTask : IScheduledTask
         }
 
         _logger.LogInformation("SubtitleForge OCR: {Count} subtitle(s) written", written);
+        await _notifier.FlushAsync("OCR", null, cancellationToken).ConfigureAwait(false);
     }
 }

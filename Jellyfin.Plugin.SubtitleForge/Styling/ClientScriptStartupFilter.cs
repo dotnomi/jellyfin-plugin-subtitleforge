@@ -53,7 +53,8 @@ public class ClientScriptStartupFilter : IStartupFilter
 
     private async Task InjectAsync(HttpContext context, Func<Task> next)
     {
-        if (Plugin.Instance?.Configuration.StyleEnabled != true || !IsIndexRequest(context.Request))
+        // Always injected: besides the style (only when enabled) it adds the "Untertitel" button for admins.
+        if (Plugin.Instance is null || !IsIndexRequest(context.Request))
         {
             await next().ConfigureAwait(false);
             return;

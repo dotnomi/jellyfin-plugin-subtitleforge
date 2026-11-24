@@ -27,10 +27,11 @@ public class SubtitleSearchService
     /// <param name="openSubtitles">OpenSubtitles.</param>
     /// <param name="quota">Quota guard.</param>
     /// <param name="logger">Logger.</param>
-    public SubtitleSearchService(SubDlSource subDl, OpenSubtitlesSource openSubtitles, QuotaGuard quota, ILogger<SubtitleSearchService> logger)
+    /// <param name="jimaku">Jimaku.</param>
+    public SubtitleSearchService(SubDlSource subDl, OpenSubtitlesSource openSubtitles, QuotaGuard quota, ILogger<SubtitleSearchService> logger, JimakuSource jimaku)
     {
         _quota = quota;
-        _sources = new ISubtitleSource[] { openSubtitles, subDl };
+        _sources = new ISubtitleSource[] { openSubtitles, subDl, jimaku };
         OpenSubtitles = openSubtitles;
         _logger = logger;
     }

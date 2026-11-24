@@ -46,6 +46,31 @@ public static class LibraryItems
     public static bool IsEnabled(ILibraryManager libraryManager, BaseItem item) =>
         InLibraries(libraryManager, item, EnabledLibraries());
 
+    /// <summary>
+    /// The video itself, or all movies/episodes below a folder (season, series, collection, library).
+    /// </summary>
+    /// <param name="libraryManager">Library manager.</param>
+    /// <param name="item">Item.</param>
+    /// <returns>Videos ordered by season/episode/name.</returns>
+    public static List<Video> VideosUnder(ILibraryManager libraryManager, BaseItem item)
+    {
+        if (item is Video v)
+        {
+            return new List<Video> { v };
+        }
+
+        return libraryManager.GetItemList(new InternalItemsQuery
+        {
+            AncestorIds = new[] { item.Id },
+            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode },
+            IsVirtualItem = false,
+            Recursive = true,
+        }).OfType<Video>()
+            .Where(x => !string.IsNullOrEmpty(x.Path))
+            .OrderBy(x => x.ParentIndexNumber ?? 0).ThenBy(x => x.IndexNumber ?? 0).ThenBy(x => x.SortName, StringComparer.Ordinal)
+            .ToList();
+    }
+
     private static HashSet<Guid>? EnabledLibraries()
     {
         var ids = Plugin.Instance?.Configuration.Libraries;

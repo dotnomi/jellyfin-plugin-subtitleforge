@@ -21,9 +21,12 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddTransient<IStartupFilter, ClientScriptStartupFilter>();
         serviceCollection.AddSingleton<FfmpegRunner>();
+        serviceCollection.AddSingleton<Throttle>();
+        serviceCollection.AddSingleton<Notifier>();
         serviceCollection.AddSingleton<SubtitleFileWriter>();
         serviceCollection.AddSingleton<SubDlSource>();
         serviceCollection.AddSingleton<OpenSubtitlesSource>();
+        serviceCollection.AddSingleton<JimakuSource>();
         serviceCollection.AddSingleton<QuotaGuard>();
         serviceCollection.AddSingleton<SubtitleSearchService>();
         serviceCollection.AddSingleton<DownloadStateStore>();
@@ -34,8 +37,11 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<WhisperModels>();
         serviceCollection.AddSingleton<TranslationModels>();
         serviceCollection.AddSingleton<TranslationService>();
+        serviceCollection.AddSingleton<Translation.SubtitleTranslator>();
         serviceCollection.AddSingleton<WhisperService>();
         serviceCollection.AddSingleton<ItemProcessor>();
+        serviceCollection.AddSingleton<Whisper.GpuSelfTest>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Whisper.GpuSelfTest>());
         serviceCollection.AddSingleton<WorkQueue>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<WorkQueue>());
     }

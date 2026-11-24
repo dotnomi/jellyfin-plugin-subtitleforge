@@ -17,14 +17,35 @@
             #SubtitleForgeConfigPage .sf-wait { background: rgba(128,128,128,.25); }
             #SubtitleForgeConfigPage .sf-detail { opacity: .75; font-size: .85em; }
             #SubtitleForgeConfigPage .sf-actions select, #SubtitleForgeConfigPage .sf-actions button { margin: .15em .2em .15em 0; }
-            #SubtitleForgeConfigPage .sf-queue { padding: .75em 1em; border-radius: .4em; background: rgba(128,128,128,.12); margin-bottom: 1em; font-size: .9em; }
+            #SubtitleForgeConfigPage .sf-queue { padding: 1em 1.2em; border-radius: .6em; background: rgba(128,128,128,.12); margin-bottom: 1.2em; font-size: .92em; }
+            #SubtitleForgeConfigPage .sf-q-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; margin-bottom: .6em; }
+            #SubtitleForgeConfigPage .sf-q-head h3 { margin: 0; font-size: 1.05em; }
+            #SubtitleForgeConfigPage .sf-q-total { opacity: .8; }
+            #SubtitleForgeConfigPage .sf-job { display: grid; grid-template-columns: 1.6em 1fr auto; gap: .2em .7em; align-items: center; padding: .55em 0; border-top: 1px solid rgba(128,128,128,.18); }
+            #SubtitleForgeConfigPage .sf-job:first-of-type { border-top: 0; }
+            #SubtitleForgeConfigPage .sf-job .material-icons { font-size: 1.3em; opacity: .85; }
+            #SubtitleForgeConfigPage .sf-job-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            #SubtitleForgeConfigPage .sf-job-kind { font-size: .8em; padding: .05em .5em; border-radius: .8em; background: rgba(0,164,220,.2); margin-left: .4em; }
+            #SubtitleForgeConfigPage .sf-job-meta { text-align: right; opacity: .8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            #SubtitleForgeConfigPage .sf-job .sf-bar { grid-column: 2 / 4; height: .45em; }
+            #SubtitleForgeConfigPage .sf-job.running { background: rgba(0,164,220,.07); border-radius: .4em; padding-left: .4em; padding-right: .4em; }
+            #SubtitleForgeConfigPage .sf-bar.indeterminate > div { width: 30% !important; animation: sfSlide 1.6s ease-in-out infinite; }
+            @keyframes sfSlide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+            #SubtitleForgeConfigPage .sf-more { opacity: .7; padding-top: .4em; }
+            #SubtitleForgeConfigPage .sf-log { margin-top: .7em; padding-top: .5em; border-top: 1px dashed rgba(128,128,128,.3); }
             #SubtitleForgeConfigPage .sf-toolbar { display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em; }
             #SubtitleForgeConfigPage .sf-toolbar input[type=search] { min-width: 16em; padding: .4em; }
+            #SubtitleForgeConfigPage .sf-sub { margin: .4em 0 .8em; padding: .6em .8em; border-left: 3px solid rgba(0,164,220,.6); background: rgba(128,128,128,.08); }
+            #SubtitleForgeConfigPage .sf-sub pre { white-space: pre-wrap; margin: .3em 0; font-size: .85em; opacity: .85; }
+            #SubtitleForgeConfigPage .sf-bar { height: .6em; background: rgba(128,128,128,.25); border-radius: .3em; overflow: hidden; min-width: 8em; }
+            #SubtitleForgeConfigPage .sf-bar > div { height: 100%; background: #00a4dc; }
         </style>
         <div data-role="content">
             <div class="content-primary">
                 <div class="sf-tabs">
                     <button is="emby-button" type="button" class="raised sf-tab active" data-tab="overview"><span>Übersicht</span></button>
+                    <button is="emby-button" type="button" class="raised sf-tab" data-tab="stats"><span>Statistik</span></button>
+                    <button is="emby-button" type="button" class="raised sf-tab" data-tab="syncreport"><span>Sync-Bericht</span></button>
                     <button is="emby-button" type="button" class="raised sf-tab" data-tab="settings"><span>Einstellungen</span></button>
                 </div>
 
@@ -41,6 +62,25 @@
                     <table class="sf">
                         <thead><tr><th>Titel</th><th>Sprachen</th><th>Aktionen</th></tr></thead>
                         <tbody id="sfRows"><tr><td colspan="3">Wird geladen …</td></tr></tbody>
+                    </table>
+                </div>
+
+                <!-- ===================== Statistik ===================== -->
+                <div id="sfStats" style="display:none">
+                    <p class="sf-detail">Anteil der Filme/Folgen, die in der gewünschten Sprache einen (nicht-forced) Untertitel haben – eingebettet, extern oder vom Plugin erzeugt.</p>
+                    <table class="sf">
+                        <thead><tr><th>Bibliothek</th><th>Sprache</th><th>Abdeckung</th><th></th><th>davon vom Plugin</th></tr></thead>
+                        <tbody id="sfStatRows"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
+                    </table>
+                </div>
+
+                <!-- ===================== Sync-Bericht ===================== -->
+                <div id="sfSyncReport" style="display:none">
+                    <p class="sf-detail">Erstellt von der geplanten Aufgabe „Sync-Bericht erstellen (nur prüfen)“ – sie ändert nichts. „Korrigieren“ passt die Zeiten an: Dateien des Plugins direkt, bei fremden Dateien entsteht eine korrigierte Kopie (Spur „Sync“), das Original bleibt unangetastet.</p>
+                    <div class="sf-detail" id="sfSyncCreated"></div>
+                    <table class="sf">
+                        <thead><tr><th>Titel / Datei</th><th>Ergebnis</th><th>Korrektur</th><th></th></tr></thead>
+                        <tbody id="sfSyncRows"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
                     </table>
                 </div>
 
@@ -83,12 +123,21 @@
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="OcrSkipIfTextExists" type="checkbox" is="emby-checkbox" /><span>Überspringen, wenn bereits eine eingebettete Textspur gleicher Sprache existiert</span></label></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OcrThreads">CPU-Threads für OCR (1–2 für NAS)</label><input id="OcrThreads" type="number" step="1" min="1" max="16" is="emby-input" /></div>
 
+                    <h2 class="sectionTitle">ASS/SSA und Forced</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="ConvertAssToSrt" type="checkbox" is="emby-checkbox" /><span>Eingebettete ASS/SSA-Untertitel zusätzlich als sauberes SRT anlegen</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Für Anime: Dialog und Liedtexte als Spur „Text“, die dem einheitlichen Stil folgt. Schilder/Typesetting fallen dabei weg; die Original-ASS-Spur bleibt auswählbar. Läuft mit der OCR-Aufgabe.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="DeriveForcedSubtitles" type="checkbox" is="emby-checkbox" /><span>Forced-Untertitel (Schilder, Lieder, fremdsprachige Stellen) ergänzen</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Gibt es eine Tonspur in einer gewünschten Sprache (z. B. deutsche Synchro), aber keinen Forced-Untertitel: aus der ASS-Spur werden Schilder + Lieder als Forced-Spur erzeugt, sonst wird ein als „nur fremdsprachige Teile“ markierter Untertitel geladen – nur bei exaktem Treffer (Hash oder gleiches Release), da Forced-Untertitel nicht gegen die Tonspur prüfbar sind.</div></div>
+
                     <h2 class="sectionTitle">Untertitel herunterladen</h2>
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="DownloadOnlySafeMatches" type="checkbox" is="emby-checkbox" /><span>Ohne Audio-Prüfung nur sichere Treffer speichern</span></label>
                         <div class="fieldDescription checkboxFieldDescription">Sicher = gleiche Datei (Hash) oder gleiche Release-Gruppe und Quelle. Mit aktivierter Synchronitätsprüfung (unten) werden auch andere Releases genommen, wenn sie nachweislich zur Tonspur passen.</div></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="DownloadRetryDays">Erneut suchen nach (Tagen)</label><input id="DownloadRetryDays" type="number" step="1" min="1" max="365" is="emby-input" /></div>
                     <h3>SubDL</h3>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="SubDlApiKey">API-Key (kostenlos auf subdl.com → Konto → API)</label><input id="SubDlApiKey" type="password" autocomplete="off" is="emby-input" /></div>
+                    <h3>Jimaku (Anime, Japanisch/Englisch)</h3>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="JimakuApiKey">API-Key (kostenlos: jimaku.cc → Konto → API-Key)</label><input id="JimakuApiKey" type="password" autocomplete="off" is="emby-input" />
+                        <div class="fieldDescription">Wird nur gefragt, wenn Japanisch oder Englisch gewünscht ist (z. B. Tag <code>subs:ja,en</code>).</div></div>
                     <h3>OpenSubtitles.com</h3>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesApiKey">API-Key (opensubtitles.com → Profil → API consumers)</label><input id="OpenSubtitlesApiKey" type="password" autocomplete="off" is="emby-input" /></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="OpenSubtitlesUsername">Benutzername</label><input id="OpenSubtitlesUsername" type="text" autocomplete="off" is="emby-input" /></div>
@@ -104,10 +153,14 @@
                         <div class="fieldDescription checkboxFieldDescription">Betrifft die Aufgabe „Untertitel-Synchronität prüfen und korrigieren“. Das Original bleibt als *.srt.orig erhalten.</div></div>
 
                     <h2 class="sectionTitle">Spracherkennung (Whisper)</h2>
-                    <p>Erzeugt Untertitel aus einer Tonspur – manuell über die Übersicht, optional automatisch, wenn nirgends ein passender Untertitel gefunden wurde. Läuft auf der CPU; das Modell wird beim ersten Einsatz heruntergeladen. Ergebnis: Spur „Whisper“.</p>
+                    <p>Erzeugt Untertitel aus einer Tonspur – manuell über die Übersicht oder den Button „Untertitel“ auf der Seite eines Films/einer Folge/Staffel/Serie, optional automatisch. Das Modell wird beim ersten Einsatz heruntergeladen. Ergebnis: Spur „[AI] Whisper“.</p>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperEnabled" type="checkbox" is="emby-checkbox" /><span>Whisper verwenden</span></label></div>
-                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperAutoFallback" type="checkbox" is="emby-checkbox" /><span>Automatisch als letzter Ausweg (nach erfolgloser Suche)</span></label>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="WhisperAutoFallback" type="checkbox" is="emby-checkbox" /><span>Sofort nach erfolgloser Suche automatisch erzeugen</span></label>
                         <div class="fieldDescription checkboxFieldDescription">Gilt für alle Filme/Serien ohne Tag. Einzelne Serien/Filme schaltest du mit dem Tag <code>whisper:auto</code> bzw. <code>whisper:off</code> im Metadaten-Editor um. Standardmäßig aus: Whisper wird dann nur manuell über die Übersicht gestartet (pro Film/Folge, Tonspur und Zielsprache frei wählbar). Automatisch kann es auf kleinen CPUs viele Stunden Rechenzeit kosten.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="WhisperLastResort" type="checkbox" is="emby-checkbox" /><span>Als letzter Ausweg, wenn lange nichts gefunden wird</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Nach der nächtlichen Download-Aufgabe: Folgen, für die seit den unten eingestellten Tagen kein Untertitel gefunden wurde, bekommen einen Whisper-Untertitel – höchstens so viele pro Lauf wie eingestellt (älteste Lücken zuerst). Respektiert das Zeitfenster.</div></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WhisperLastResortAfterDays">… nach so vielen Tagen ohne Fund</label><input id="WhisperLastResortAfterDays" type="number" step="1" min="0" max="365" is="emby-input" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WhisperLastResortPerRun">… höchstens so viele pro Lauf</label><input id="WhisperLastResortPerRun" type="number" step="1" min="0" max="100" is="emby-input" /></div>
                     <div class="selectContainer"><label class="selectLabel" for="WhisperModel">Modell</label>
                         <select is="emby-select" id="WhisperModel" class="emby-select-withcolor emby-select">
                             <option value="base">base – 60 MB, schnell, mehr Fehler</option>
@@ -116,14 +169,33 @@
                             <option value="large-v3-turbo">large-v3-turbo – 570 MB, sehr genau, nur Transkription</option>
                         </select></div>
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="WhisperUseGpu" type="checkbox" is="emby-checkbox" /><span>GPU nutzen (Vulkan: AMD, Intel, NVIDIA)</span></label>
-                        <div class="fieldDescription checkboxFieldDescription">Ohne passende GPU oder ohne Vulkan-Treiber wird automatisch die CPU genutzt. Voraussetzung auf dem Server: Pakete <code>libvulkan1</code> und <code>mesa-vulkan-drivers</code> (AMD/Intel), Zugriff von Jellyfin auf <code>/dev/dri</code> (wie für Hardware-Transcoding). Änderung wirkt nach Neustart von Jellyfin. <span id="sfHardware"></span></div></div>
+                        <div class="fieldDescription checkboxFieldDescription">Ohne passende GPU oder ohne Vulkan-Treiber wird automatisch die CPU genutzt. Voraussetzung auf dem Server: Pakete <code>libvulkan1</code> und <code>mesa-vulkan-drivers</code> (AMD/Intel), Zugriff von Jellyfin auf <code>/dev/dri</code> (wie für Hardware-Transcoding). Änderung wirkt nach Neustart von Jellyfin. Stürzt der Treiber ab, läuft der Job automatisch auf der CPU weiter. <span id="sfHardware"></span></div></div>
+                    <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="GpuSelfTest" type="checkbox" is="emby-checkbox" /><span>GPU nach dem Start von Jellyfin kurz testen</span></label></div>
+                    <div><button is="emby-button" type="button" class="raised" id="sfGpuTest"><span>GPU jetzt testen</span></button> <span class="sf-detail" id="sfGpuTestResult"></span></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="WhisperThreads">CPU-Threads (0 = automatisch)</label><input id="WhisperThreads" type="number" step="1" min="0" max="32" is="emby-input" /></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="TranslateExistingSubtitles" type="checkbox" is="emby-checkbox" /><span>Fehlende Sprache aus vorhandenem Untertitel übersetzen</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Wird kein Untertitel heruntergeladen, übersetzt das Plugin einen vorhandenen Text-Untertitel einer anderen Sprache offline (bevorzugt die offizielle Spur, z. B. Deutsch → Englisch) – Timing bleibt exakt, keine Erkennungsfehler. Whisper kommt erst danach in Frage. Ergebnis: Spur „[AI] Übersetzt de-en“.</div></div>
                     <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="TranslationEnabled" type="checkbox" is="emby-checkbox" /><span>In andere Sprachen übersetzen (offline)</span></label>
                         <div class="fieldDescription checkboxFieldDescription">Gibt es keine Tonspur in der gewünschten Sprache, wird die am besten erkannte Tonspur transkribiert und lokal übersetzt: Deutsch↔Englisch (Opus-MT), Japanisch↔Englisch (FuguMT), Japanisch↔Deutsch über Englisch. Modelle (~110–150 MB je Richtung) werden beim ersten Einsatz geladen. Qualität: gut für Deutsch↔Englisch, für Japanisch eher zum Verstehen.</div></div>
 
                     <h2 class="sectionTitle">Neue Filme und Folgen</h2>
                     <div class="checkboxContainer"><label class="emby-checkbox-label"><input id="ProcessNewItems" type="checkbox" is="emby-checkbox" /><span>Neu hinzugefügte Einträge automatisch bearbeiten</span></label></div>
                     <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="NewItemDelayMinutes">Wartezeit nach dem letzten neuen Eintrag (Minuten)</label><input id="NewItemDelayMinutes" type="number" step="1" min="1" max="240" is="emby-input" /></div>
+
+                    <h2 class="sectionTitle">Rücksicht auf Zuschauer</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="PauseDuringPlayback" type="checkbox" is="emby-checkbox" /><span>Pausieren, solange jemand etwas schaut</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">OCR, Downloads, Sync und Whisper warten, bis keine Wiedergabe mehr läuft; ein laufender Whisper-Job wird angehalten und danach fortgesetzt.</div></div>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="AutoWorkWindowEnabled" type="checkbox" is="emby-checkbox" /><span>Automatische Arbeit nur in einem Zeitfenster</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Gilt für neu hinzugefügte Einträge und Whisper als letzten Ausweg. Manuelle Aktionen laufen sofort; die geplanten Aufgaben folgen ihren Zeitplänen unter Dashboard → Geplante Aufgaben.</div></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="AutoWorkStartHour">Von (Stunde, 0–23)</label><input id="AutoWorkStartHour" type="number" step="1" min="0" max="23" is="emby-input" /></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="AutoWorkEndHour">Bis (Stunde, 0–24)</label><input id="AutoWorkEndHour" type="number" step="1" min="0" max="24" is="emby-input" /></div>
+
+                    <h2 class="sectionTitle">Benachrichtigung</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription"><label class="emby-checkbox-label"><input id="NotifyActivityLog" type="checkbox" is="emby-checkbox" /><span>Zusammenfassung ins Aktivitätsprotokoll schreiben</span></label>
+                        <div class="fieldDescription checkboxFieldDescription">Nach jedem Lauf (OCR, Download, Sync, neue Einträge): was neu entstanden ist. Zu sehen unter Dashboard → Aktivität.</div></div>
+                    <div class="inputContainer"><label class="inputLabel inputLabelUnfocused" for="NotifyWebhookUrl">Webhook-URL (optional: ntfy, Gotify, Discord oder JSON)</label><input id="NotifyWebhookUrl" type="text" autocomplete="off" is="emby-input" />
+                        <div class="fieldDescription">z. B. <code>https://ntfy.sh/mein-thema</code>, <code>https://gotify.example/message?token=…</code> oder ein Discord-Webhook.</div></div>
+                    <div><button is="emby-button" type="button" class="raised" id="sfNotifyTest"><span>Testnachricht senden</span></button></div>
 
                     <div><button is="emby-button" type="submit" class="raised button-submit block emby-button"><span>Speichern</span></button></div>
                     <p>Nach dem Speichern den Web-Client neu laden (F5), damit der neue Stil greift.</p>
@@ -135,13 +207,16 @@
                 var pluginId = 'f1e66da5-7fed-45f1-a6b8-79c253708fc8';
                 var fields = ['FontFamily', 'FontSizeVh', 'FontWeight', 'TextColor', 'OutlineColor', 'OutlineWidthPx', 'BackgroundColor', 'BackgroundOpacity', 'BottomOffsetPercent',
                     'DownloadLanguages', 'OcrThreads', 'DownloadRetryDays', 'SubDlApiKey', 'OpenSubtitlesApiKey', 'OpenSubtitlesUsername', 'OpenSubtitlesPassword', 'SyncMaxCandidates',
-                    'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes'];
+                    'WhisperModel', 'WhisperThreads', 'NewItemDelayMinutes', 'JimakuApiKey', 'WhisperLastResortAfterDays', 'WhisperLastResortPerRun',
+                    'AutoWorkStartHour', 'AutoWorkEndHour', 'NotifyWebhookUrl'];
                 var checks = ['StyleEnabled', 'WhisperUseGpu', 'SpokenTextOnly', 'RemoveLyrics', 'DropShadow', 'OcrIncludeUndefined', 'OcrSkipIfTextExists', 'DownloadOnlySafeMatches', 'OpenSubtitlesOnlyHashMatches', 'SyncEnabled',
-                    'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems'];
-                var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes'];
+                    'SyncFixForeignSubtitles', 'WhisperEnabled', 'WhisperAutoFallback', 'TranslationEnabled', 'ProcessNewItems', 'ConvertAssToSrt', 'DeriveForcedSubtitles',
+                    'WhisperLastResort', 'GpuSelfTest', 'PauseDuringPlayback', 'AutoWorkWindowEnabled', 'NotifyActivityLog', 'TranslateExistingSubtitles'];
+                var numbers = ['FontSizeVh', 'FontWeight', 'OutlineWidthPx', 'BackgroundOpacity', 'BottomOffsetPercent', 'OcrThreads', 'DownloadRetryDays', 'SyncMaxCandidates', 'WhisperThreads', 'NewItemDelayMinutes',
+                    'WhisperLastResortAfterDays', 'WhisperLastResortPerRun', 'AutoWorkStartHour', 'AutoWorkEndHour'];
                 var outcomeText = {
                     'ok': 'vorhanden', 'pending': 'noch nicht gesucht', 'none-found': 'nichts gefunden', 'no-safe-match': 'kein passender Treffer',
-                    'rejected-sync': 'verworfen: asynchron', 'waiting-quota': 'wartet auf Tageslimit', 'download-failed': 'Download fehlgeschlagen', 'error': 'Fehler', 'saved': 'heruntergeladen'
+                    'rejected-sync': 'verworfen: asynchron', 'waiting-quota': 'wartet auf Tageslimit', 'download-failed': 'Download fehlgeschlagen', 'error': 'Fehler', 'saved': 'heruntergeladen', 'rejected': 'verworfen, sucht neu'
                 };
                 var page = document.querySelector('#SubtitleForgeConfigPage');
                 var rows = [];
@@ -211,8 +286,100 @@
                         actions.appendChild(audio);
                         actions.appendChild(lang);
                         actions.appendChild(whisper);
+                        var tr2 = el('button', { is: 'emby-button', type: 'button', 'class': 'raised', title: 'Vorhandenen Untertitel einer anderen Sprache offline in die Zielsprache übersetzen' });
+                        tr2.appendChild(el('span', {}, 'Übersetzen'));
+                        tr2.addEventListener('click', function () {
+                            api('POST', 'SubtitleForge/Items/' + r.Id + '/Translate?language=' + lang.value).then(function (res) {
+                                Dashboard.alert(res && res.queued ? 'Übersetzung nach ' + lang.value.toUpperCase() + ' eingeplant.' : 'Kein übersetzbarer Untertitel einer anderen Sprache vorhanden.');
+                                refreshQueue();
+                            });
+                        });
+                        actions.appendChild(tr2);
+                        var subs = el('button', { is: 'emby-button', type: 'button', 'class': 'raised' });
+                        subs.appendChild(el('span', {}, 'Untertitel ansehen'));
+                        var subBox = el('div');
+                        subs.addEventListener('click', function () { toggleSubtitles(r, subBox); });
+                        actions.appendChild(subs);
+                        actions.appendChild(subBox);
                         tr.appendChild(actions);
                         tbody.appendChild(tr);
+                    });
+                }
+
+                var originText = { download: 'Download', whisper: 'Whisper (KI)', translation: 'Übersetzung (KI)', ocr: 'OCR', plugin: 'Plugin', foreign: 'fremd (wird nicht verändert)' };
+
+                function toggleSubtitles(r, box) {
+                    if (box.childNodes.length) { box.innerHTML = ''; return; }
+                    box.appendChild(el('div', { 'class': 'sf-detail' }, 'Wird geladen …'));
+                    api('GET', 'SubtitleForge/Items/' + r.Id + '/Subtitles').then(function (files) {
+                        box.innerHTML = '';
+                        if (!files.length) { box.appendChild(el('div', { 'class': 'sf-detail' }, 'Keine externen Untertitel-Dateien.')); return; }
+                        files.forEach(function (f) {
+                            var d = el('div', { 'class': 'sf-sub' });
+                            d.appendChild(el('div', {}, f.file));
+                            d.appendChild(el('div', { 'class': 'sf-detail' }, (originText[f.origin] || f.origin) + ' · ' + f.count + ' Einträge' + (f.forced ? ' · forced' : '')));
+                            d.appendChild(el('pre', {}, (f.preview || []).map(function (c) { return c.time + '  ' + c.text.replace(/\n/g, ' / '); }).join('\n')));
+                            if (f.canReject && !f.forced) {
+                                var b = el('button', { is: 'emby-button', type: 'button', 'class': 'raised' });
+                                b.appendChild(el('span', {}, f.origin === 'download' ? 'Passt nicht – verwerfen und neu suchen' : 'Passt nicht – löschen'));
+                                b.addEventListener('click', function () {
+                                    api('POST', 'SubtitleForge/Items/' + r.Id + '/Subtitles/Reject?file=' + encodeURIComponent(f.file)).then(function () {
+                                        Dashboard.alert(f.origin === 'download' ? 'Verworfen und gesperrt – neue Suche ist eingeplant.' : 'Gelöscht.');
+                                        box.innerHTML = ''; refreshQueue();
+                                    });
+                                });
+                                d.appendChild(b);
+                            }
+                            box.appendChild(d);
+                        });
+                    });
+                }
+
+                function loadStats() {
+                    var tbody = page.querySelector('#sfStatRows');
+                    api('GET', 'SubtitleForge/Stats').then(function (libs) {
+                        tbody.innerHTML = '';
+                        if (!libs.length) { tbody.appendChild(el('tr')).appendChild(el('td', { colspan: 5 }, 'Keine Einträge.')); return; }
+                        libs.forEach(function (lib) {
+                            lib.languages.forEach(function (l, i) {
+                                var tr = el('tr');
+                                tr.appendChild(el('td', {}, i === 0 ? lib.library + ' (' + lib.videos + ')' : ''));
+                                tr.appendChild(el('td', {}, l.language.toUpperCase()));
+                                tr.appendChild(el('td', {}, l.percent + ' % (' + l.have + '/' + l.wanted + ')'));
+                                var barTd = el('td'); var bar = el('div', { 'class': 'sf-bar' }); var fill = el('div'); fill.style.width = l.percent + '%'; bar.appendChild(fill); barTd.appendChild(bar); tr.appendChild(barTd);
+                                tr.appendChild(el('td', {}, String(l.byPlugin)));
+                                tbody.appendChild(tr);
+                            });
+                        });
+                    });
+                }
+
+                var syncText = { shifted: 'verschoben', unsure: 'passt evtl. nicht zur Datei', ok: 'synchron', 'no-audio': 'Tonspur nicht prüfbar', empty: 'leer', error: 'Fehler' };
+
+                function loadSyncReport() {
+                    var tbody = page.querySelector('#sfSyncRows');
+                    api('GET', 'SubtitleForge/SyncReport').then(function (rep) {
+                        page.querySelector('#sfSyncCreated').textContent = rep.created ? 'Stand: ' + new Date(rep.created).toLocaleString() : 'Noch kein Bericht – Aufgabe „Sync-Bericht erstellen (nur prüfen)“ unter Geplante Aufgaben starten.';
+                        tbody.innerHTML = '';
+                        (rep.rows || []).forEach(function (r) {
+                            var tr = el('tr');
+                            var t = el('td'); t.appendChild(el('div', {}, r.Name)); t.appendChild(el('div', { 'class': 'sf-detail' }, r.File)); tr.appendChild(t);
+                            tr.appendChild(el('td', {}, syncText[r.Outcome] || r.Outcome));
+                            tr.appendChild(el('td', { 'class': 'sf-detail' }, r.Outcome === 'ok' || r.Outcome === 'shifted' ? ('max. ' + (r.MaxShiftMs / 1000).toFixed(2) + ' s · ' + r.Segments + ' Abschnitt(e)' + (Math.abs(r.Ratio - 1) > 0.0001 ? ' · Framerate ×' + r.Ratio.toFixed(4) : '') + ' · Überdeckung ' + r.Overlap) : ''));
+                            var a = el('td');
+                            if (r.Fixed) { a.appendChild(el('span', { 'class': 'sf-pill sf-ok' }, 'korrigiert')); }
+                            else if (r.Outcome === 'shifted') {
+                                var b = el('button', { is: 'emby-button', type: 'button', 'class': 'raised' }); b.appendChild(el('span', {}, 'Korrigieren'));
+                                b.addEventListener('click', function () {
+                                    b.disabled = true;
+                                    api('POST', 'SubtitleForge/Items/' + r.ItemId + '/Subtitles/Fix?file=' + encodeURIComponent(r.File)).then(function (res) { Dashboard.alert(res.message); loadSyncReport(); }, function () { b.disabled = false; });
+                                });
+                                a.appendChild(b);
+                            }
+                            tr.appendChild(a);
+                            tbody.appendChild(tr);
+                        });
+                        if (!(rep.rows || []).length) { tbody.appendChild(el('tr')).appendChild(el('td', { colspan: 4 }, 'Keine Einträge.')); }
                     });
                 }
 
@@ -222,16 +389,72 @@
                     api('GET', 'SubtitleForge/Report?onlyMissing=' + only).then(function (data) { rows = data || []; renderRows(); });
                 }
 
+                var kindText = { NewItem: 'Neu', Search: 'Suche', Whisper: 'Whisper', Translate: 'Übersetzen' };
+                var kindIcon = { NewItem: 'fiber_new', Search: 'search', Whisper: 'record_voice_over', Translate: 'translate' };
+
+                function fmtDuration(sec) {
+                    if (sec === null || sec === undefined) { return ''; }
+                    sec = Math.max(0, Math.round(sec));
+                    if (sec < 60) { return sec + ' s'; }
+                    var m = Math.round(sec / 60);
+                    if (m < 60) { return m + ' min'; }
+                    return Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
+                }
+
+                function bar(progress) {
+                    var b = el('div', { 'class': 'sf-bar' + (progress === null || progress === undefined ? ' indeterminate' : '') });
+                    var f = el('div');
+                    f.style.width = (progress === null || progress === undefined ? 30 : Math.round(progress * 100)) + '%';
+                    b.appendChild(f);
+                    return b;
+                }
+
+                function jobRow(icon, name, kind, meta, progress, running) {
+                    var row = el('div', { 'class': 'sf-job' + (running ? ' running' : '') });
+                    row.appendChild(el('span', { 'class': 'material-icons ' + icon, 'aria-hidden': 'true' }));
+                    var n = el('div', { 'class': 'sf-job-name', title: name });
+                    n.appendChild(document.createTextNode(name));
+                    if (kind) { n.appendChild(el('span', { 'class': 'sf-job-kind' }, kind)); }
+                    row.appendChild(n);
+                    row.appendChild(el('div', { 'class': 'sf-job-meta' }, meta));
+                    if (running) { row.appendChild(bar(progress)); }
+                    return row;
+                }
+
                 function refreshQueue() {
                     api('GET', 'SubtitleForge/Queue').then(function (q) {
                         var box = page.querySelector('#sfQueue');
                         box.innerHTML = '';
-                        box.appendChild(el('div', {}, q.current ? ('Läuft gerade: ' + q.current.name + ' (' + q.current.kind + (q.current.language ? ' ' + q.current.language.toUpperCase() : '') + ')') : 'Gerade läuft nichts.'));
-                        if (q.pending && q.pending.length) {
-                            box.appendChild(el('div', {}, 'Wartend: ' + q.pending.map(function (p) { return p.name + ' (' + p.kind + ')'; }).join(', ')));
+                        var busy = q.current || (q.pending && q.pending.length) || (q.tasks && q.tasks.length);
+                        var head = el('div', { 'class': 'sf-q-head' });
+                        head.appendChild(el('h3', {}, busy ? 'Aufträge' : 'Aufträge – gerade läuft nichts'));
+                        if (busy && q.totalEtaSeconds) { head.appendChild(el('div', { 'class': 'sf-q-total' }, 'insgesamt noch ca. ' + fmtDuration(q.totalEtaSeconds))); }
+                        box.appendChild(head);
+
+                        (q.tasks || []).forEach(function (t) {
+                            var pct = t.progress !== null && t.progress !== undefined ? Math.round(t.progress * 100) + ' %' : '';
+                            box.appendChild(jobRow('schedule', t.name, 'Geplante Aufgabe', pct + (t.etaSeconds ? ' · noch ' + fmtDuration(t.etaSeconds) : ''), t.progress, true));
+                        });
+
+                        if (q.current) {
+                            var c = q.current;
+                            var meta = c.waiting ? 'pausiert (Wiedergabe läuft)' :
+                                ((c.progress !== null && c.progress !== undefined ? Math.round(c.progress * 100) + ' % · ' : '') + (c.etaSeconds !== null ? 'noch ' + fmtDuration(c.etaSeconds) : 'läuft seit ' + fmtDuration(c.elapsedSeconds)));
+                            box.appendChild(jobRow(kindIcon[c.kind] || 'play_arrow', c.name, (kindText[c.kind] || c.kind) + (c.language ? ' ' + c.language.toUpperCase() : ''), meta, c.progress, true));
                         }
 
-                        (q.log || []).slice(0, 5).forEach(function (line) { box.appendChild(el('div', { 'class': 'sf-detail' }, line)); });
+                        var pending = q.pending || [];
+                        pending.slice(0, 8).forEach(function (p) {
+                            box.appendChild(jobRow('hourglass_empty', p.name, (kindText[p.kind] || p.kind) + (p.language ? ' ' + p.language.toUpperCase() : ''), 'ca. ' + fmtDuration(p.etaSeconds), null, false));
+                        });
+                        if (pending.length > 8) { box.appendChild(el('div', { 'class': 'sf-more' }, '… und ' + (pending.length - 8) + ' weitere wartende Aufträge')); }
+
+                        var log = (q.log || []).slice(0, 5);
+                        if (log.length) {
+                            var lg = el('div', { 'class': 'sf-log' });
+                            log.forEach(function (line) { lg.appendChild(el('div', { 'class': 'sf-detail' }, line)); });
+                            box.appendChild(lg);
+                        }
                     });
                 }
 
@@ -239,12 +462,24 @@
                     page.querySelectorAll('.sf-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === name); });
                     page.querySelector('#sfOverview').style.display = name === 'overview' ? '' : 'none';
                     page.querySelector('#SubtitleForgeConfigForm').style.display = name === 'settings' ? '' : 'none';
+                    page.querySelector('#sfStats').style.display = name === 'stats' ? '' : 'none';
+                    page.querySelector('#sfSyncReport').style.display = name === 'syncreport' ? '' : 'none';
+                    if (name === 'stats') { loadStats(); }
+                    if (name === 'syncreport') { loadSyncReport(); }
                 }
 
                 page.querySelectorAll('.sf-tab').forEach(function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
                 page.querySelector('#sfFilter').addEventListener('input', renderRows);
                 page.querySelector('#sfOnlyMissing').addEventListener('change', loadReport);
                 page.querySelector('#sfReload').addEventListener('click', function () { loadReport(); refreshQueue(); });
+                page.querySelector('#sfGpuTest').addEventListener('click', function () {
+                    var out = page.querySelector('#sfGpuTestResult');
+                    out.textContent = 'Test läuft (bis zu einigen Minuten) …';
+                    api('POST', 'SubtitleForge/Hardware/Test').then(function (r) { out.textContent = r.result; }, function () { out.textContent = 'Test fehlgeschlagen.'; });
+                });
+                page.querySelector('#sfNotifyTest').addEventListener('click', function () {
+                    api('POST', 'SubtitleForge/Notify/Test').then(function () { Dashboard.alert('Testnachricht gesendet (vorher speichern, falls die URL neu ist).'); });
+                });
 
                 page.addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
@@ -271,9 +506,10 @@
                     });
                     loadReport();
                     refreshQueue();
-                    queueTimer = setInterval(refreshQueue, 10000);
+                    queueTimer = setInterval(refreshQueue, 5000);
                     api('GET', 'SubtitleForge/Hardware').then(function (h) {
                         page.querySelector('#sfHardware').textContent = 'Status: ' + h.gpu + (h.runtime === 'Vulkan' ? ' – Whisper läuft auf der GPU.' : (h.runtime === 'Cpu' ? ' – Whisper läuft auf der CPU.' : ''));
+                        if (h.selfTest) { page.querySelector('#sfGpuTestResult').textContent = h.selfTest; }
                     }, function () { });
                 });
                 page.addEventListener('pagehide', function () { if (queueTimer) { clearInterval(queueTimer); } });

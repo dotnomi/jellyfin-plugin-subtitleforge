@@ -6,3 +6,4 @@ artifacts
 out/
 Jellyfin.Plugin.SubtitleForge.Tests/Fixtures/synth/film.wav
 out-helper/
+dist/

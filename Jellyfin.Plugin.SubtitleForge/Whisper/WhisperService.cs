@@ -171,7 +171,9 @@ public sealed class WhisperService : IDisposable
         {
             var dataDir = Plugin.Instance?.DataFolderPath ?? tempDir;
             var modelPath = await _models.EnsureAsync(model, Path.Combine(dataDir, "whisper-models"), cancellationToken).ConfigureAwait(false);
+            progress?.Report(0.01);
             var speech = await _speech.ExtractPcmAsync(video, audio, pcm, cancellationToken).ConfigureAwait(false);
+            progress?.Report(0.05);
             var windows = WhisperEngine.SpeechWindows(speech);
             if (windows.Count == 0)
             {
@@ -181,7 +183,7 @@ public sealed class WhisperService : IDisposable
             var threads = config.WhisperThreads > 0 ? config.WhisperThreads : Math.Clamp(Environment.ProcessorCount - 1, 1, 8);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var segments = await Task.Run(
-                () => WhisperEngine.TranscribeAsync(modelPath, pcm, windows, sourceLanguage, false, threads, progress, cancellationToken),
+                () => WhisperEngine.TranscribeAsync(modelPath, pcm, windows, sourceLanguage, false, threads, progress is null ? null : new Scaled(progress, 0.05, translate ? 0.85 : 0.95), cancellationToken),
                 cancellationToken).ConfigureAwait(false);
 
             if (translate)
@@ -224,4 +226,23 @@ public sealed class WhisperService : IDisposable
             _gate.Release();
         }
     }
+}
+
+/// <summary>
+/// Maps a 0..1 sub-progress onto a range of the overall progress.
+/// </summary>
+internal sealed class Scaled : IProgress<double>
+{
+    private readonly IProgress<double> _inner;
+    private readonly double _offset;
+    private readonly double _span;
+
+    public Scaled(IProgress<double> inner, double offset, double span)
+    {
+        _inner = inner;
+        _offset = offset;
+        _span = span;
+    }
+
+    public void Report(double value) => _inner.Report(_offset + (_span * Math.Clamp(value, 0, 1)));
 }

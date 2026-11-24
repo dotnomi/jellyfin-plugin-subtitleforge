@@ -28,6 +28,9 @@ public enum WorkKind
 
     /// <summary>Generate with Whisper (manual).</summary>
     Whisper,
+
+    /// <summary>Translate an existing subtitle (manual).</summary>
+    Translate,
 }
 
 /// <summary>
@@ -49,6 +52,10 @@ public sealed class WorkQueue : IHostedService, IDisposable
     private readonly ILibraryManager _libraryManager;
     private readonly ItemProcessor _processor;
     private readonly ILogger<WorkQueue> _logger;
+    private readonly Throttle _throttle;
+    private readonly Notifier _notifier;
+    private int _doneSinceFlush;
+    private readonly JobTiming _timing = new();
     private readonly ConcurrentDictionary<string, WorkItem> _pending = new();
     private readonly CancellationTokenSource _stop = new();
     private Task? _loop;
@@ -60,8 +67,12 @@ public sealed class WorkQueue : IHostedService, IDisposable
     /// <param name="libraryManager">Library manager.</param>
     /// <param name="processor">Processor.</param>
     /// <param name="logger">Logger.</param>
-    public WorkQueue(ILibraryManager libraryManager, ItemProcessor processor, ILogger<WorkQueue> logger)
+    /// <param name="throttle">Throttle.</param>
+    /// <param name="notifier">Notifier.</param>
+    public WorkQueue(ILibraryManager libraryManager, ItemProcessor processor, ILogger<WorkQueue> logger, Throttle throttle, Notifier notifier)
     {
+        _throttle = throttle;
+        _notifier = notifier;
         _libraryManager = libraryManager;
         _processor = processor;
         _logger = logger;
@@ -69,6 +80,45 @@ public sealed class WorkQueue : IHostedService, IDisposable
 
     /// <summary>Gets the job currently running, if any.</summary>
     public WorkItem? Current { get; private set; }
+
+    /// <summary>Gets when the current job started.</summary>
+    public DateTime CurrentStartedUtc { get; private set; }
+
+    /// <summary>Gets the progress of the current job (0..1), or null if it does not report progress.</summary>
+    public double? CurrentProgress { get; private set; }
+
+    /// <summary>Gets a value indicating whether the current job waits (someone is watching, outside the time window).</summary>
+    public bool CurrentWaiting => Current is not null && _throttle.ShouldPause();
+
+    /// <summary>
+    /// Estimated remaining seconds of the current job.
+    /// </summary>
+    /// <returns>Seconds, or null when idle.</returns>
+    public double? CurrentRemainingSeconds()
+    {
+        if (Current is not { } job)
+        {
+            return null;
+        }
+
+        var elapsed = (DateTime.UtcNow - CurrentStartedUtc).TotalSeconds;
+        if (CurrentProgress is { } p && p >= 0.08)
+        {
+            return Math.Max(0, elapsed * (1 - p) / p);
+        }
+
+        return Math.Max(5, Estimate(job) - elapsed);
+    }
+
+    /// <summary>
+    /// Estimated duration of a job (learned from earlier jobs).
+    /// </summary>
+    /// <param name="job">Job.</param>
+    /// <returns>Seconds.</returns>
+    public double Estimate(WorkItem job) => _timing.Estimate(job.Kind.ToString(), RuntimeMinutes(job.ItemId));
+
+    private double RuntimeMinutes(Guid id) =>
+        _libraryManager.GetItemById(id)?.RunTimeTicks is { } t && t > 0 ? TimeSpan.FromTicks(t).TotalMinutes : 24;
 
     /// <summary>Gets the last results of manual actions (newest first).</summary>
     public ConcurrentQueue<string> Log { get; } = new();
@@ -145,13 +195,41 @@ public sealed class WorkQueue : IHostedService, IDisposable
                     .OrderBy(w => w.Kind == WorkKind.NewItem ? 1 : 0)
                     .ThenBy(w => w.DueUtc)
                     .FirstOrDefault();
-                if (due is null || !_pending.TryRemove(Key(due), out _))
+                if (due is null)
+                {
+                    // Queue idle: report what the automatic runs created.
+                    if (_doneSinceFlush > 0 && _pending.IsEmpty)
+                    {
+                        _doneSinceFlush = 0;
+                        await _notifier.FlushAsync("Neue Einträge", null, token).ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                if (due.Kind == WorkKind.NewItem)
+                {
+                    await _throttle.WaitForAutomaticWorkAsync(token).ConfigureAwait(false);
+                }
+
+                if (!_pending.TryRemove(Key(due), out _))
                 {
                     continue;
                 }
 
                 Current = due;
+                CurrentStartedUtc = DateTime.UtcNow;
+                CurrentProgress = null;
                 await RunAsync(due, token).ConfigureAwait(false);
+                var took = (DateTime.UtcNow - CurrentStartedUtc).TotalSeconds;
+                if (took > 3)
+                {
+                    _timing.Record(due.Kind.ToString(), took, RuntimeMinutes(due.ItemId));
+                }
+                if (due.Kind == WorkKind.NewItem)
+                {
+                    _doneSinceFlush++;
+                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -187,8 +265,12 @@ public sealed class WorkQueue : IHostedService, IDisposable
                 message = $"{video.Name}: Suche abgeschlossen, {s} Untertitel gespeichert";
                 break;
             case WorkKind.Whisper:
-                var outcome = await _processor.WhisperAsync(video, job.Language ?? "de", job.AudioIndex, job.ReplaceDownload, token).ConfigureAwait(false);
+                var outcome = await _processor.WhisperAsync(video, job.Language ?? "de", job.AudioIndex, job.ReplaceDownload, token, new SyncProgress(p => CurrentProgress = p)).ConfigureAwait(false);
                 message = $"{video.Name}: {outcome.Message}";
+                break;
+            case WorkKind.Translate:
+                var translated = await _processor.TranslateAsync(video, job.Language ?? "en", token, new SyncProgress(p => CurrentProgress = p)).ConfigureAwait(false);
+                message = $"{video.Name}: {translated.Message}";
                 break;
             default:
                 return;
@@ -201,4 +283,14 @@ public sealed class WorkQueue : IHostedService, IDisposable
             Log.TryDequeue(out _);
         }
     }
+}
+
+/// <summary>Progress that is applied immediately (Progress&lt;T&gt; would post to the thread pool).</summary>
+internal sealed class SyncProgress : IProgress<double>
+{
+    private readonly Action<double> _report;
+
+    public SyncProgress(Action<double> report) => _report = report;
+
+    public void Report(double value) => _report(value);
 }

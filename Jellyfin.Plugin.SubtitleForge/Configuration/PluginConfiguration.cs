@@ -189,6 +189,48 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public int NewItemDelayMinutes { get; set; } = 10;
 
+    /// <summary>Gets or sets a value indicating whether a missing language is translated offline from an existing subtitle of another language (before Whisper is considered).</summary>
+    public bool TranslateExistingSubtitles { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether heavy work pauses while someone is watching.</summary>
+    public bool PauseDuringPlayback { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether automatic work (new items, Whisper as last resort) is limited to a time window.</summary>
+    public bool AutoWorkWindowEnabled { get; set; }
+
+    /// <summary>Gets or sets the start hour of the window for automatic work (local time).</summary>
+    public int AutoWorkStartHour { get; set; } = 1;
+
+    /// <summary>Gets or sets the end hour of the window for automatic work (local time, exclusive).</summary>
+    public int AutoWorkEndHour { get; set; } = 7;
+
+    /// <summary>Gets or sets a value indicating whether a summary is written to Jellyfin's activity log after each run.</summary>
+    public bool NotifyActivityLog { get; set; } = true;
+
+    /// <summary>Gets or sets an optional webhook for summaries (ntfy, Gotify, Discord or any JSON endpoint).</summary>
+    public string NotifyWebhookUrl { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets a value indicating whether Whisper is used automatically as a last resort (see below).</summary>
+    public bool WhisperLastResort { get; set; }
+
+    /// <summary>Gets or sets after how many days without a found subtitle Whisper steps in.</summary>
+    public int WhisperLastResortAfterDays { get; set; } = 14;
+
+    /// <summary>Gets or sets how many last-resort Whisper jobs run per download run (per night).</summary>
+    public int WhisperLastResortPerRun { get; set; } = 3;
+
+    /// <summary>Gets or sets a value indicating whether the GPU is tested briefly after Jellyfin starts.</summary>
+    public bool GpuSelfTest { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether embedded ASS/SSA subtitles are converted into clean SRT (dialogue only).</summary>
+    public bool ConvertAssToSrt { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a forced subtitle (signs, songs, foreign-language parts) is derived from full subtitles when none exists.</summary>
+    public bool DeriveForcedSubtitles { get; set; }
+
+    /// <summary>Gets or sets the Jimaku API key (anime subtitles, Japanese/English).</summary>
+    public string JimakuApiKey { get; set; } = string.Empty;
+
     /// <summary>
     /// Gets or sets the ids of the libraries the plugin works on (empty = all libraries).
     /// </summary>

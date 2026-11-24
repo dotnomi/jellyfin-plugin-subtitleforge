@@ -47,7 +47,13 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             new PluginPageInfo
             {
                 Name = Name,
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
+                DisplayName = "SubtitleForge",
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace),
+
+                // Own entry in the dashboard sidebar (one click instead of Plugins → SubtitleForge → Settings).
+                EnableInMainMenu = true,
+                MenuSection = "server",
+                MenuIcon = "closed_caption",
             }
         ];
     }

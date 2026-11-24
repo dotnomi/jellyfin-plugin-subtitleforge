@@ -23,6 +23,7 @@ public class SubtitleFileWriter
     private readonly IProviderManager _providerManager;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger<SubtitleFileWriter> _logger;
+    private readonly Notifier _notifier;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SubtitleFileWriter"/> class.
@@ -31,8 +32,10 @@ public class SubtitleFileWriter
     /// <param name="providerManager">Provider manager.</param>
     /// <param name="fileSystem">File system.</param>
     /// <param name="logger">Logger.</param>
-    public SubtitleFileWriter(ILibraryMonitor libraryMonitor, IProviderManager providerManager, IFileSystem fileSystem, ILogger<SubtitleFileWriter> logger)
+    /// <param name="notifier">Notifier.</param>
+    public SubtitleFileWriter(ILibraryMonitor libraryMonitor, IProviderManager providerManager, IFileSystem fileSystem, ILogger<SubtitleFileWriter> logger, Notifier notifier)
     {
+        _notifier = notifier;
         _libraryMonitor = libraryMonitor;
         _providerManager = providerManager;
         _fileSystem = fileSystem;
@@ -199,6 +202,15 @@ public class SubtitleFileWriter
     }
 
     /// <summary>
+    /// Short display name ("Series S01E02" or "Movie (2020)").
+    /// </summary>
+    /// <param name="video">Video.</param>
+    /// <returns>Name.</returns>
+    public static string DisplayName(Video video) => video is MediaBrowser.Controller.Entities.TV.Episode e
+        ? $"{e.SeriesName} S{e.ParentIndexNumber:00}E{e.IndexNumber:00}"
+        : video.ProductionYear is { } y && !video.Name.Contains($"({y})", System.StringComparison.Ordinal) ? $"{video.Name} ({y})" : video.Name;
+
+    /// <summary>
     /// Writes the SRT and queues a refresh of the item.
     /// </summary>
     /// <param name="video">Video.</param>
@@ -220,6 +232,7 @@ public class SubtitleFileWriter
                 await File.WriteAllBytesAsync(tmp, bytes, cancellationToken).ConfigureAwait(false);
                 File.Move(tmp, path, overwrite: true);
                 _logger.LogInformation("SubtitleForge: saved {Path}", path);
+                _notifier.Record(DisplayName(video) + ": " + stem[(Path.GetFileNameWithoutExtension(video.Path).Length + 1)..]);
                 _providerManager.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.Normal);
                 return path;
             }

@@ -1,13 +1,13 @@
 ---
 name: "SubtitleForge"
 guid: "f1e66da5-7fed-45f1-a6b8-79c253708fc8"
-version: "0.2.1.0"
+version: "0.3.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Einheitliches Untertitel-Styling, OCR für Bild-Untertitel, Auto-Download und Audio-Sync"
 description: >
-  Erzwingt einen einheitlichen Untertitel-Stil, wandelt PGS-Bilduntertitel per OCR in SRT um,
-  lädt fehlende Untertitel (SubDL, OpenSubtitles) und prüft/korrigiert deren Timing gegen die Tonspur.
+  Einheitlicher Untertitel-Stil, OCR für Bild-Untertitel, Downloads (SubDL, OpenSubtitles, Jimaku) mit Prüfung gegen
+  die Tonspur, Sync-Korrektur, Whisper-Spracherkennung (CPU oder GPU per Vulkan) mit Offline-Übersetzung.
 category: "Metadata"
 owner: "dotnomi"
 artifacts:
@@ -37,7 +37,7 @@ artifacts:
 - "whisperhost/linux-x64/sf-whisper"
 - "whisperhost/linux-arm64/sf-whisper"
 changelog: >
-  0.2.1: Jellyfin 12.x, Bibliotheksauswahl, Whisper läuft in eigenem Prozess (GPU-Absturz beendet Jellyfin nicht mehr,
-  automatische Wiederholung auf der CPU).
-  0.2: Sprachen pro Serie/Bibliothek (Tag subs:..), Forced-Erkennung, Whisper (CPU),
-  automatische Bearbeitung neuer Einträge, Übersicht mit manuellen Aktionen.
+  0.3: Untertitel-Button auf der Seite von Film/Folge/Staffel/Serie, ganze Staffeln/Serien auf einmal, Vorschau mit
+  "passt nicht", Statistik, Sync-Bericht für die ganze Bibliothek, Pause während der Wiedergabe, Zeitfenster,
+  Zusammenfassung im Aktivitätsprotokoll/Webhook, Whisper als letzter Ausweg nach X Tagen, GPU-Selbsttest,
+  ASS→SRT, Forced-Untertitel für Synchronfassungen, Quelle Jimaku, Forced-Erkennung bei mehreren OCR-Spuren.
